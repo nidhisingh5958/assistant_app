@@ -4,7 +4,10 @@ PS 2: Building the Untethered, Always-On Al Companion
 Reimagine a smartphone that doesn't just run apps, but truly understands and assists user. An agent that sees what you see, hears what you hear, and remembers your experiences to provide contextual, real-time help, all without a constant connection to the cloud.
 
 <img width="340" height="705" alt="image" src="https://github.com/user-attachments/assets/57d7374d-7b06-4afe-b0c7-bd9115c7003f" />
-<img width="738" height="1600" alt="image" src="https://github.com/user-attachments/assets/e0f1a7f9-943b-401f-a0c1-824f44daf99e" />
+<img width="317" height="676" alt="image" src="https://github.com/user-attachments/assets/546d7193-9dc0-47fb-9ee2-9784ae076e8a" />
+
 <img width="340" height="705" alt="image" src="https://github.com/user-attachments/assets/b1f41c2e-c5ef-4d67-ab67-78b9da78bbfe" />
-<img width="738" height="1600" alt="image" src="https://github.com/user-attachments/assets/068d4689-c19c-4bc6-9a79-a59cd19c5fe9" />
+<img width="738" height="1600" alt="image" src="https://github.com/user-attachments/assets/644a3fd5-c51a-4a28-8447-2154d66c4061" />
+<img width="340" height="705" alt="image" src="https://github.com/user-attachments/assets/b1f41c2e-c5ef-4d67-ab67-78b9da78bbfe" />
+
 
