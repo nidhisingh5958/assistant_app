@@ -1,6 +1,4 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import 'dart:math';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'tokenizer.dart';
 
@@ -9,141 +7,142 @@ class Embeddings {
   final BertTokenizer tokenizer;
   final int maxLen;
   final int embedSize;
+  late int _modelVocabSize;
 
   Embeddings._(this.interpreter, this.tokenizer, this.maxLen, this.embedSize);
 
   static Future<Embeddings> load({
     String modelAsset = 'assets/models/sentence_transformer.tflite',
     String vocabAsset = 'assets/tokenizer/vocab.txt',
-    int maxLen = 128,
+    int maxLen = 128, 
     int embedSize = 384,
   }) async {
     final interpreter = await Interpreter.fromAsset(modelAsset);
     final tokenizer = await BertTokenizer.fromAsset(vocabAsset);
-
+    
     // Print model info for debugging
-    print("🔍 Model input details:");
+    print("Model input details:");
     for (int i = 0; i < interpreter.getInputTensors().length; i++) {
       final tensor = interpreter.getInputTensor(i);
       print("  Input $i: ${tensor.shape}, type: ${tensor.type}");
     }
-
-    print("🔍 Model output details:");
+    
+    print("Model output details:");
     for (int i = 0; i < interpreter.getOutputTensors().length; i++) {
       final tensor = interpreter.getOutputTensor(i);
       print("  Output $i: ${tensor.shape}, type: ${tensor.type}");
     }
-
-    return Embeddings._(interpreter, tokenizer, maxLen, embedSize);
+    
+    final embeddings = Embeddings._(interpreter, tokenizer, maxLen, embedSize);
+    
+    // all-MiniLM-L6-v2 uses the same vocab as BERT but we need to be more careful
+    // The model actually uses vocab size 30522 (standard BERT vocab)
+    embeddings._modelVocabSize = 30522;
+    print("all-MiniLM-L6-v2 model vocabulary size: ${embeddings._modelVocabSize}");
+    
+    return embeddings;
   }
 
-  /// Embed multiple texts at once with better error handling
   List<List<double>> embedTexts(List<String> texts) {
     try {
-      // Process texts in smaller batches to avoid memory issues
-      const batchSize = 4; // Reduced batch size
+      // Process one text at a time for all-MiniLM-L6-v2 stability
       List<List<double>> allEmbeddings = [];
-
-      for (int start = 0; start < texts.length; start += batchSize) {
-        final end = (start + batchSize < texts.length)
-            ? start + batchSize
-            : texts.length;
-        final batch = texts.sublist(start, end);
-
-        print(
-          "🔄 Processing batch ${start ~/ batchSize + 1}/${(texts.length / batchSize).ceil()}: ${batch.length} texts",
-        );
-
-        final batchEmbeddings = _embedBatch(batch);
-        allEmbeddings.addAll(batchEmbeddings);
+      
+      for (int i = 0; i < texts.length; i++) {
+        print("Processing text ${i + 1}/${texts.length}");
+        final embedding = _embedSingle(texts[i]);
+        allEmbeddings.add(embedding);
       }
-
+      
       return allEmbeddings;
     } catch (e, stackTrace) {
-      print("❌ Error in embedTexts: $e");
+      print("Error in embedTexts: $e");
       print("Stack trace: $stackTrace");
       rethrow;
     }
   }
 
-  // ... (rest of the file unchanged)
-
-  List<List<double>> _embedBatch(List<String> texts) {
-    final int batchSize = texts.length;
-    final List<List<int>> inputIds = [];
-    final List<List<int>> attentionMasks = [];
-
-    for (int i = 0; i < texts.length; i++) {
-      final text = texts[i];
-      print(
-        "🔤 Processing text $i: '${text.length > 50 ? text.substring(0, 50) + '...' : text}'",
-      );
-
-      try {
-        // Use tokenizer.encode directly (it already handles CLS/SEP/padding)
-        final tokens = tokenizer.encode(text, maxLen: maxLen);
-        print("🔢 Tokens (first 10): ${tokens.take(10).toList()}...");
-
-        // Validate token IDs
-        final invalidTokens = tokens
-            .where((token) => token < 0 || token >= tokenizer.vocabSize)
-            .toList();
-        if (invalidTokens.isNotEmpty) {
-          print("⚠️ Warning: Found invalid tokens: $invalidTokens");
-          // Replace invalid with UNK (assume ID 100 for BERT-like models)
-          final cleanedTokens = tokens
-              .map((t) => (t < 0 || t >= tokenizer.vocabSize) ? 100 : t)
-              .toList();
-          inputIds.add(cleanedTokens);
-        } else {
-          inputIds.add(tokens);
-        }
-
-        // Create attention mask: 1 for non-pad (id != 0), 0 for pad
-        final mask = tokens.map((id) => id != 0 ? 1 : 0).toList();
-        attentionMasks.add(mask);
-
-        print("🎯 Final tokens (first 10): ${tokens.take(10).toList()}...");
-      } catch (e) {
-        print("❌ Error tokenizing text $i: $e");
-        // Fallback: empty input with CLS/SEP
-        final safeTokens = List<int>.filled(maxLen, 0);
-        safeTokens[0] = 101; // CLS
-        safeTokens[1] = 102; // SEP
-        inputIds.add(safeTokens);
-        attentionMasks.add(safeTokens.map((id) => id != 0 ? 1 : 0).toList());
-      }
-    }
-
+  List<double> _embedSingle(String text) {
     try {
-      print("📊 Input tensor shape: [$batchSize, $maxLen]");
+      print("Processing text: '${text.length > 50 ? text.substring(0, 50) + '...' : text}'");
 
-      // Resize tensors for current batch (essential for dynamic shapes)
-      interpreter.resizeInputTensor(0, [batchSize, maxLen]);
-      interpreter.resizeInputTensor(1, [batchSize, maxLen]);
+      // Tokenize the text
+      final tokens = tokenizer.encode(text, maxLen: maxLen);
+      print("Raw tokens (first 10): ${tokens.take(10).toList()}...");
+
+      // Critical fix: Ensure all tokens are within valid range for all-MiniLM-L6-v2
+      final validTokens = tokens.map((token) {
+        if (token < 0 || token >= _modelVocabSize) {
+          // For all-MiniLM-L6-v2, use [UNK] token ID which is typically 100
+          return 100;
+        }
+        return token;
+      }).toList();
+
+      // Verify token validity
+      final minToken = validTokens.reduce((a, b) => a < b ? a : b);
+      final maxToken = validTokens.reduce((a, b) => a > b ? a : b);
+      print("Token range: min=$minToken, max=$maxToken (vocab size: $_modelVocabSize)");
+
+      if (maxToken >= _modelVocabSize || minToken < 0) {
+        throw Exception("Invalid tokens detected even after cleaning");
+      }
+
+      // Create attention mask
+      final attentionMask = validTokens.map((id) => id != 0 ? 1 : 0).toList();
+
+      print("Final tokens (first 10): ${validTokens.take(10).toList()}...");
+
+      // Prepare inputs for all-MiniLM-L6-v2 (expects input_ids and attention_mask)
+      final inputIds = [validTokens];
+      final attentionMasks = [attentionMask];
+
+      // Resize tensors for single input
+      interpreter.resizeInputTensor(0, [1, maxLen]); // input_ids
+      interpreter.resizeInputTensor(1, [1, maxLen]); // attention_mask
       interpreter.allocateTensors();
 
-      // Prepare output buffer
-      final output = List.generate(
-        batchSize,
-        (_) => List<double>.filled(embedSize, 0.0),
-      );
+      // Prepare output buffer for all-MiniLM-L6-v2 (384-dim embeddings)
+      final output = [List<double>.filled(embedSize, 0.0)];
 
-      // Run inference with BOTH inputs
-      print("🚀 Running inference...");
+      print("Running inference...");
       interpreter.runForMultipleInputs([inputIds, attentionMasks], {0: output});
-      print("✅ Inference completed successfully");
+      print("Inference completed successfully");
 
-      return output;
+      return output[0];
     } catch (e, stackTrace) {
-      print("❌ TensorFlow Lite inference failed: $e");
+      print("TensorFlow Lite inference failed: $e");
       print("Stack trace: $stackTrace");
-      // Fallback zero embeddings
-      print("🔄 Returning zero embeddings as fallback");
-      return List.generate(
-        batchSize,
-        (_) => List<double>.filled(embedSize, 0.0),
-      );
+      
+      // Return zero embedding as fallback
+      print("Returning zero embedding as fallback");
+      return List<double>.filled(embedSize, 0.0);
     }
+  }
+
+  // Helper method to validate model compatibility
+  Future<bool> validateModel() async {
+    try {
+      const testText = "This is a test sentence.";
+      final embedding = _embedSingle(testText);
+      final hasNonZero = embedding.any((val) => val.abs() > 1e-6);
+      final embeddingNorm = _calculateNorm(embedding);
+      print("Model validation:");
+      print("  - Non-zero values: $hasNonZero");
+      print("  - Embedding norm: $embeddingNorm");
+      print("  - Sample values: ${embedding.take(5).toList()}");
+      return hasNonZero && embeddingNorm > 0.01;
+    } catch (e) {
+      print("Model validation failed: $e");
+      return false;
+    }
+  }
+
+  double _calculateNorm(List<double> vector) {
+    double sum = 0.0;
+    for (final val in vector) {
+      sum += val * val;
+    }
+    return sum > 0 ? sqrt(sum) : 0.0;
   }
 }

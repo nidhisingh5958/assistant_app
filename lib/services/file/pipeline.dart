@@ -11,21 +11,18 @@ class PipelineResult {
   final int totalEmbeddings;
   final bool refreshed;
   final String message;
-
-  PipelineResult(
-    this.totalChunks,
-    this.totalEmbeddings,
-    this.refreshed,
-    this.message,
-  );
+  
+  PipelineResult(this.totalChunks, this.totalEmbeddings, this.refreshed, this.message);
 }
 
 class Pipeline {
   final List<int> aesKey32;
   final TextChunker chunker;
-
-  Pipeline({required this.aesKey32, TextChunker? chunker})
-    : chunker = chunker ?? TextChunker();
+  
+  Pipeline({
+    required this.aesKey32,
+    TextChunker? chunker,
+  }) : chunker = chunker ?? TextChunker();
 
   Future<String> _getEncFilesDir() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -40,7 +37,7 @@ class Pipeline {
     try {
       final dirPath = await _getEncFilesDir();
       final dir = Directory(dirPath);
-
+      
       // Step 1: Decrypt .enc files to .txt (temporarily)
       final encFiles = dir
           .listSync()
@@ -59,9 +56,7 @@ class Pipeline {
       List<File> tempTxtFiles = [];
       for (final encFile in encFiles) {
         try {
-          await crypto.decryptFile(
-            encFile,
-          ); // This creates .txt and deletes .enc
+          await crypto.decryptFile(encFile); // This creates .txt and deletes .enc
           final txtPath = encFile.path.replaceFirst(RegExp(r'\.enc$'), '.txt');
           tempTxtFiles.add(File(txtPath));
         } catch (e) {
@@ -72,12 +67,12 @@ class Pipeline {
       // Step 2: Process text files into chunks
       List<String> allChunks = [];
       List<String> chunkSources = []; // Track which file each chunk came from
-
+      
       for (var file in tempTxtFiles) {
         final content = await file.readAsString();
         final chunks = chunker.chunkText(content);
         allChunks.addAll(chunks);
-
+        
         // Track source file for each chunk
         for (int i = 0; i < chunks.length; i++) {
           chunkSources.add(file.path);
@@ -85,17 +80,10 @@ class Pipeline {
       }
 
       if (allChunks.isEmpty) {
-        return PipelineResult(
-          0,
-          0,
-          false,
-          "No text content found in decrypted files",
-        );
+        return PipelineResult(0, 0, false, "No text content found in decrypted files");
       }
 
-      print(
-        "📂 Collected ${allChunks.length} text chunks from ${tempTxtFiles.length} files",
-      );
+      print("📂 Collected ${allChunks.length} text chunks from ${tempTxtFiles.length} files");
 
       // Step 3: Generate embeddings
       final embeddings = await Embeddings.load();
@@ -106,10 +94,10 @@ class Pipeline {
 
       // Step 4: Store in vector database
       final vectorStore = await VectorStore.open(embedSize: 384);
-
+      
       // Clear existing data for refresh
       await vectorStore.clear();
-
+      
       // Add all chunks and their embeddings
       for (int i = 0; i < allChunks.length; i++) {
         await vectorStore.add(
@@ -136,11 +124,12 @@ class Pipeline {
       }
 
       return PipelineResult(
-        allChunks.length,
-        vectors.length,
-        true,
-        "Pipeline completed successfully",
+        allChunks.length, 
+        vectors.length, 
+        true, 
+        "Pipeline completed successfully"
       );
+
     } catch (e, stackTrace) {
       print("❌ Pipeline failed: $e");
       print("Stack trace: $stackTrace");
