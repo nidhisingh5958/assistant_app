@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:listen_iq/services/router.dart';
-import 'screens/home.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // cameras = await availableCameras();
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {

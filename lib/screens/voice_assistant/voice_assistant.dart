@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:flutter/material.dart';
 import 'package:listen_iq/screens/voice_assistant/components/3d_mesh.dart';
+import 'package:listen_iq/services/file/embeddings.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -41,6 +41,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   Timer? _speechTimeout;
   Timer? _levelSimulationTimer;
 
+  // Add the embeddings instance
+  late Embeddings _embeddings;
+  bool _embeddingsLoaded = false;
+
   // Color scheme as specified
   static const Color primaryPurple = Color(0xFF662d8c);
   static const Color accentPink = Color(0xFFd4145a);
@@ -51,6 +55,21 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
     super.initState();
     _initializeAnimations();
     _initializeSpeech();
+    _initializeEmbeddings();
+  }
+
+  void _initializeEmbeddings() async {
+    try {
+      _embeddings = await Embeddings.load();
+      if (mounted) {
+        setState(() {
+          _embeddingsLoaded = true;
+          print("✅ Embeddings model loaded successfully");
+        });
+      }
+    } catch (e) {
+      print("❌ Failed to load embeddings model: $e");
+    }
   }
 
   void _initializeAnimations() {
@@ -222,6 +241,15 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
       return;
     }
 
+    // Check if embeddings are loaded before starting
+    if (!_embeddingsLoaded) {
+      setState(() {
+        _isListening = false;
+        _status = "Embeddings model not ready. Please wait.";
+      });
+      return;
+    }
+
     try {
       setState(() {
         _isListening = true;
@@ -271,6 +299,16 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
               _textController.forward();
             }
           });
+
+          if (val.finalResult) {
+            _lastFullText = _recognizedText;
+            _lastWords = val.recognizedWords;
+            _confidence = val.confidence;
+            _status = "Got it! Processing...";
+
+            // Embed the recognized text
+            _processRecognizedText(_recognizedText);
+          }
         },
         listenFor: Duration(seconds: 30),
         pauseFor: Duration(seconds: 3),
@@ -328,6 +366,23 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         _status = "No speech detected. Try again.";
       }
     });
+  }
+
+  void _processRecognizedText(String text) async {
+    if (text.isEmpty) return;
+
+    print("Embedding recognized text: '$text'");
+    try {
+      final List<List<double>> embeddings = _embeddings.embedTexts([text]);
+      if (embeddings.isNotEmpty) {
+        final List<double> singleEmbedding = embeddings.first;
+        print(
+          " Successfully generated embedding of size ${singleEmbedding.length}",
+        );
+      }
+    } catch (e) {
+      print(" Failed to generate embedding: $e");
+    }
   }
 
   Future<void> _toggle() async {
