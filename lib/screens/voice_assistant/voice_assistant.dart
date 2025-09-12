@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:listen_iq/screens/voice_assistant/components/3d_mesh.dart';
 import 'package:listen_iq/services/file/crypto_service.dart';
 import 'package:listen_iq/services/file/embeddings.dart';
+import 'package:listen_iq/services/file/pipeline.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:io';
 import 'package:tiktoken/tiktoken.dart';
@@ -68,10 +69,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
     _loadModel();
   }
 
-
   Future<void> _loadModel() async {
     try {
-      _interpreter = await Interpreter.fromAsset("assets/models/distilgpt2.tflite");
+      _interpreter = await Interpreter.fromAsset(
+        "assets/models/distilgpt2.tflite",
+      );
       debugPrint("✅ DistilGPT-2 model loaded!");
       setState(() {
         _isModelLoaded = true;
@@ -81,7 +83,6 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
       debugPrint("❌ Error loading model: $e");
     }
   }
-
 
   /// Always work inside /enc_files
   Future<String> _appDirPath() async {
@@ -100,6 +101,23 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
 
     await file.writeAsString(text, flush: true);
     setState(() => _status = "Created test file at ${file.path}");
+  }
+
+  /// Debug: list files in /enc_files
+  Future<void> _makeVectorEmbeddings() async {
+    final dirPath = await _appDirPath();
+    final dir = Directory(dirPath);
+    final files = dir.listSync();
+    if (files.length > 20) {
+      try {
+        final pipeline = Pipeline(
+          aesKey32: List.filled(32, 1),
+        ); // dummy key for now
+        await pipeline.run();
+      } catch (e) {
+        setState(() => _status = "Pipeline failed: $e");
+      }
+    }
   }
 
   Future<void> _encryptAll() async {
@@ -132,53 +150,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         print("❌ Failed to encrypt ${f.path}: $e\n$st");
       }
     }
-
+    // create vector embedding if more than 20 files
+    if (files.length > 20) {
+      await _makeVectorEmbeddings();
+    }
     setState(() => _status = "Encrypted $successCount/${files.length} files");
-  }
-
-/// Decrypt all .enc files in /enc_files → restore original .txt
-  Future<void> _decryptAll() async {
-    setState(() => _status = "Decrypting files...");
-    final dirPath = await _appDirPath();
-    final dir = Directory(dirPath);
-
-    final files = dir
-        .listSync()
-        .where((e) => e is File && e.path.endsWith(".enc"))
-        .cast<File>()
-        .toList();
-
-    if (files.isEmpty) {
-      setState(() => _status = "No .enc files found in $dirPath");
-      return;
-    }
-
-    final crypto = CryptoService();
-    await crypto.loadKeyDecrypt();
-
-    int successCount = 0;
-    for (final f in files) {
-      try {
-        await crypto.decryptFile(f); // restores .txt + deletes .enc
-        successCount++;
-      } catch (e, st) {
-        print("❌ Failed to decrypt ${f.path}: $e\n$st");
-      }
-    }
-
-    setState(() => _status = "Decrypted $successCount/${files.length} files");
-  }
-
-
-  /// Debug: list files in /enc_files
-  Future<void> _listFiles() async {
-    final dirPath = await _appDirPath();
-    final dir = Directory(dirPath);
-    final files = dir.listSync();
-    for (final f in files) {
-      print(" - ${f.path}");
-    }
-    setState(() => _status = "Listed ${files.length} files (see console)");
   }
 
   void _initializeEmbeddings() async {
@@ -492,7 +468,6 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
       }
     });
   }
-
 
   Future<void> _toggle() async {
     if (!mounted) return;
