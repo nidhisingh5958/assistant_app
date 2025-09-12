@@ -3,8 +3,13 @@ import 'dart:math' as math;
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:flutter/material.dart';
 import 'package:listen_iq/screens/voice_assistant/components/3d_mesh.dart';
+import 'package:listen_iq/services/file/crypto_service.dart';
 import 'package:listen_iq/services/file/embeddings.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'dart:io';
+import 'package:tiktoken/tiktoken.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -41,6 +46,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   Timer? _speechTimeout;
   Timer? _levelSimulationTimer;
 
+  late Interpreter _interpreter;
+  bool _isModelLoaded = false;
+  final enc = getEncoding('gpt2');
+
   // Add the embeddings instance
   late Embeddings _embeddings;
   bool _embeddingsLoaded = false;
@@ -56,6 +65,120 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
     _initializeAnimations();
     _initializeSpeech();
     _initializeEmbeddings();
+    _loadModel();
+  }
+
+
+  Future<void> _loadModel() async {
+    try {
+      _interpreter = await Interpreter.fromAsset("assets/models/distilgpt2.tflite");
+      debugPrint("✅ DistilGPT-2 model loaded!");
+      setState(() {
+        _isModelLoaded = true;
+        _status = "Model loaded.";
+      });
+    } catch (e) {
+      debugPrint("❌ Error loading model: $e");
+    }
+  }
+
+
+  /// Always work inside /enc_files
+  Future<String> _appDirPath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final encDir = Directory("${dir.path}/enc_files");
+    if (!await encDir.exists()) {
+      await encDir.create(recursive: true);
+    }
+    return encDir.path;
+  }
+
+  Future<void> _createTextFile(String text) async {
+    final dirPath = await _appDirPath();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File("$dirPath/sample_$timestamp.txt");
+
+    await file.writeAsString(text, flush: true);
+    setState(() => _status = "Created test file at ${file.path}");
+  }
+
+  Future<void> _encryptAll() async {
+    setState(() => _status = "Encrypting files...");
+    final dirPath = await _appDirPath();
+    final dir = Directory(dirPath);
+
+    final files = dir
+        .listSync()
+        .where((e) => e is File && e.path.endsWith(".txt"))
+        .cast<File>()
+        .toList();
+
+    if (files.isEmpty) {
+      setState(() => _status = "No .txt files found in $dirPath");
+      return;
+    }
+
+    final crypto = CryptoService();
+    await crypto.loadKeyEncrypt();
+
+    int successCount = 0;
+    for (final f in files) {
+      try {
+        final outPath = f.path.replaceFirst(RegExp(r'\.txt$'), '.enc');
+        await crypto.encryptFile(f, outPath);
+        await f.delete();
+        successCount++;
+      } catch (e, st) {
+        print("❌ Failed to encrypt ${f.path}: $e\n$st");
+      }
+    }
+
+    setState(() => _status = "Encrypted $successCount/${files.length} files");
+  }
+
+/// Decrypt all .enc files in /enc_files → restore original .txt
+  Future<void> _decryptAll() async {
+    setState(() => _status = "Decrypting files...");
+    final dirPath = await _appDirPath();
+    final dir = Directory(dirPath);
+
+    final files = dir
+        .listSync()
+        .where((e) => e is File && e.path.endsWith(".enc"))
+        .cast<File>()
+        .toList();
+
+    if (files.isEmpty) {
+      setState(() => _status = "No .enc files found in $dirPath");
+      return;
+    }
+
+    final crypto = CryptoService();
+    await crypto.loadKeyDecrypt();
+
+    int successCount = 0;
+    for (final f in files) {
+      try {
+        await crypto.decryptFile(f); // restores .txt + deletes .enc
+        successCount++;
+      } catch (e, st) {
+        print("❌ Failed to decrypt ${f.path}: $e\n$st");
+      }
+    }
+
+    setState(() => _status = "Decrypted $successCount/${files.length} files");
+  }
+
+
+  /// Debug: list files in /enc_files
+  Future<void> _listFiles() async {
+    final dirPath = await _appDirPath();
+    final dir = Directory(dirPath);
+    final files = dir.listSync();
+    for (final f in files) {
+      print(" - ${f.path}");
+    }
+    setState(() => _status = "Listed ${files.length} files (see console)");
   }
 
   void _initializeEmbeddings() async {
@@ -307,7 +430,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
             _status = "Got it! Processing...";
 
             // Embed the recognized text
-            _processRecognizedText(_recognizedText);
+            _createTextFile(_recognizedText);
+            // encrypt the text file
+            _encryptAll();
           }
         },
         listenFor: Duration(seconds: 30),
@@ -368,22 +493,6 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
     });
   }
 
-  void _processRecognizedText(String text) async {
-    if (text.isEmpty) return;
-
-    print("Embedding recognized text: '$text'");
-    try {
-      final List<List<double>> embeddings = _embeddings.embedTexts([text]);
-      if (embeddings.isNotEmpty) {
-        final List<double> singleEmbedding = embeddings.first;
-        print(
-          " Successfully generated embedding of size ${singleEmbedding.length}",
-        );
-      }
-    } catch (e) {
-      print(" Failed to generate embedding: $e");
-    }
-  }
 
   Future<void> _toggle() async {
     if (!mounted) return;
