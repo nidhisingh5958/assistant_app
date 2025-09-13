@@ -72,7 +72,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   Future<void> _loadModel() async {
     try {
       _interpreter = await Interpreter.fromAsset(
-        "assets/models/distilgpt2.tflite",
+        'assets/models/distilgpt2.tflite',
       );
       debugPrint("✅ DistilGPT-2 model loaded!");
       setState(() {
@@ -150,8 +150,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         print("❌ Failed to encrypt ${f.path}: $e\n$st");
       }
     }
-    // create vector embedding if more than 20 files
-    if (files.length > 20) {
+    // create vector embedding if more than 2 files
+    if (files.length > 2) { // for testing, set to 2
       await _makeVectorEmbeddings();
     }
     setState(() => _status = "Encrypted $successCount/${files.length} files");
