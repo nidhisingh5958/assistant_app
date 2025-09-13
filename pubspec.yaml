@@ -77,7 +77,7 @@ flutter:
   assets:
     # Embedding model (you provide this file)
     - assets/models/sentence_transformer.tflite
-    - assets/models/distilgpt2.tflite
+    # - assets/models/distilgpt2.tflite
     # WordPiece vocab for tokenizer (you provide vocab.txt from the model)
     - assets/tokenizer/vocab.txt
     - assets/enc_files/
