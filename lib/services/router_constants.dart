@@ -14,6 +14,8 @@ class RouteConstants {
 
   // settings routes
   static String notifications = "notifications";
+  static String termsAndConditions = "termsAndConditions";
+  static String contactUs = "contactUs";
   static String settings = "settings";
   static String profileSettings = "profileSettings";
   static String securitySettings = "securitySettings";

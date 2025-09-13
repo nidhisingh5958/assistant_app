@@ -1,7 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:listen_iq/services/router_constants.dart';
 
@@ -130,18 +129,17 @@ class _SideMenuState extends State<SideMenu> {
         _buildSectionHeader("Settings"),
         const SizedBox(height: 12),
         _buildMenuItem(
-          icon: Icons.settings,
-          label: 'Settings & Privacy',
+          icon: Icons.gavel,
+          label: 'Terms & Conditions',
           onTap: () {
-            _navigateAndClose(RouteConstants.profileSettings);
+            _navigateAndClose(RouteConstants.termsAndConditions);
           },
         ),
         _buildMenuItem(
           icon: Icons.report_problem,
           label: 'Report a problem',
           onTap: () {
-            _closeDrawer();
-            // Handle report problem functionality
+            _navigateAndClose(RouteConstants.contactUs);
           },
         ),
       ],
