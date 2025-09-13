@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:listen_iq/services/file/embeddings.dart';
+import 'package:listen_iq/services/file/vector_store.dart';
 import 'package:tiktoken/tiktoken.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -10,6 +12,8 @@ late Interpreter _interpreter;
 bool _isModelLoaded = false;
 String _status = "Loading model...";
 final enc = getEncoding('gpt2');
+final TextEditingController _chatController = TextEditingController();
+String _chatResponse = "";
 
 Future<void> _loadModel() async {
   try {
@@ -26,8 +30,6 @@ Future<void> _loadModel() async {
 
 // ---------------------- Helper for GPT-2 ----------------------
 
-// Replace your generateAnswer function with this fixed version:
-
 Future<String> generateAnswer(String prompt, {int maxGenLen = 32}) async {
   await _loadModel();
   if (!_isModelLoaded) throw Exception("Model not loaded yet.");
@@ -35,7 +37,7 @@ Future<String> generateAnswer(String prompt, {int maxGenLen = 32}) async {
   List<int> tokens = enc.encode(prompt).toList();
   print("Original tokens: ${tokens.take(10).toList()}...");
 
-  // CRITICAL FIX: DistilGPT-2 typically has vocab size 50257, but let's be safe
+  // DistilGPT-2 typically has vocab size 50257, but let's be safe
   const int modelVocabSize = 50257; // Standard GPT-2 vocab size
   const int eosToken = 50256;
 
@@ -170,143 +172,4 @@ int _argmax(List<double> logits) {
     }
   }
   return maxIndex;
-}
-
-Future<void> _askQuestion() async {
-  final query = _chatController.text.trim();
-  if (query.isEmpty) return;
-
-  // Check if model is loaded before proceeding
-  if (!_isModelLoaded) {
-    setState(() {
-      _chatResponse = "Model is still loading. Please wait...";
-      _status = "Model not ready yet.";
-    });
-    return;
-  }
-
-  setState(() => _status = "Searching embeddings...");
-
-  try {
-    final embeddings = await Embeddings.load();
-
-    // VALIDATE THE MODEL FIRST
-    final isValid = await embeddings.validateModel();
-    if (!isValid) {
-      setState(() {
-        _chatResponse =
-            "Model validation failed. Check tokenizer compatibility.";
-        _status = "Model validation error.";
-      });
-      return;
-    }
-
-    final store = await VectorStore.open(embedSize: 384);
-
-    final queryVec = embeddings.embedTexts([query])[0];
-    final results = await store.search(queryVec, topK: 3);
-    await store.close();
-
-    if (results.isEmpty) {
-      setState(() {
-        _chatResponse = "No relevant chunks found.";
-        _status = "Q&A done.";
-      });
-    } else {
-      final cleanedContext = results
-          .map(
-            (r) => r.text
-                .replaceAll(
-                  RegExp(r'[^a-zA-Z0-9\s\.,!?]'),
-                  '',
-                ) // Remove special symbols
-                .replaceAll(RegExp(r'\s+'), ' ') // Normalize spaces
-                .trim(),
-          )
-          .join("\n\n")
-          .trim();
-
-      if (cleanedContext.isEmpty) {
-        setState(
-          () => _chatResponse =
-              "The context doesn't contain the answer to your question.",
-        );
-        return;
-      }
-      print("Cleaned context:\n$cleanedContext");
-      print("User's query: $query");
-
-      setState(() {
-        _chatResponse = "Context:\n$cleanedContext\n\nGenerating answer...";
-        _status = "Generating answer...";
-      });
-
-      final ragPrompt =
-          """
-      Please answer only using the context if missing say "The context doesn't contain the answer to your question."
-      Context: $cleanedContext
-      Question: $query
-      Answer:
-    """;
-
-      // -----------------------------------------this is not working good, using a external api for now-----------------------------------------
-      //   final formattedAnswer = await generateAnswer(ragPrompt);
-      //   final promptString = ragPrompt.trim();
-      //   print("Prompt to LLM:\n$promptString");
-
-      //   final tokens = enc.encode(promptString).toList();
-      //   print("First 20 tokens: $tokens");
-      //   setState(() {
-      //     _chatResponse = formattedAnswer;
-      //     _status = "Answer generated.";
-      //   });
-      // //-------------------------------------------------------------------------------------------------------------------------------------
-
-      // --------------------------------API stuff--------------------------------------------------------------------------------------------------
-
-      final client = http.Client();
-      try {
-        final request = http.Request(
-          "GET",
-          Uri.parse(
-            "http://10.0.2.2:8000/chat?query=${Uri.encodeComponent(query)}",
-          ),
-        );
-
-        final streamedResponse = await client.send(request);
-
-        if (streamedResponse.statusCode == 200) {
-          print("Response from server:${streamedResponse.statusCode}");
-          // Convert to a UTF8 stream
-          final stream = streamedResponse.stream.transform(utf8.decoder);
-
-          // Listen to chunks and append them to UI
-          await for (final chunk in stream) {
-            setState(() {
-              _chatResponse += chunk;
-            });
-          }
-
-          setState(() {
-            _status = "Streaming finished ✅";
-          });
-        } else {
-          throw Exception("Failed with status ${streamedResponse.statusCode}");
-        }
-      } catch (e) {
-        setState(() {
-          _chatResponse = "❌ Error: $e";
-          _status = "Streaming failed.";
-        });
-      } finally {
-        client.close();
-      }
-      //-----------------------------------------------------------------------------------------------------
-    }
-  } catch (e) {
-    setState(() {
-      _chatResponse = "Error during search: $e";
-      _status = "Q&A failed.";
-    });
-  }
 }

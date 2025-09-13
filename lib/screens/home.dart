@@ -216,19 +216,19 @@ class _HomePageState extends State<HomeScreen> with TickerProviderStateMixin {
                               fontSize: 16,
                             ),
                           ),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () {
-                              _navigateAndCloseDrawer(
-                                RouteConstants.voiceAssistant,
-                              );
-                            },
-                            child: const Icon(
-                              Icons.mic,
-                              color: Colors.white70,
-                              size: 20,
-                            ),
-                          ),
+                          // const Spacer(),
+                          // GestureDetector(
+                          //   onTap: () {
+                          //     _navigateAndCloseDrawer(
+                          //       RouteConstants.voiceAssistant,
+                          //     );
+                          //   },
+                          //   child: const Icon(
+                          //     Icons.mic,
+                          //     color: Colors.white70,
+                          //     size: 20,
+                          //   ),
+                          // ),
                         ],
                       ),
                     ),
