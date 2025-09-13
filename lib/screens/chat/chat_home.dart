@@ -142,7 +142,7 @@ class _ChatHomeState extends State<ChatHome> {
       drawer: const SideMenu(),
       appBar: AppHeader(
         title: "ListenIQ",
-        chatTitle: _showWelcome ? null : "Health Assistant",
+        chatTitle: _showWelcome ? null : "AI Assistant",
         isInChat: !_showWelcome,
         onMenuPressed: () {
           final scaffoldState = _scaffoldKey.currentState;
@@ -226,7 +226,7 @@ class _ChatHomeState extends State<ChatHome> {
             const SizedBox(height: 8),
             Text(
               _isModelInitialized
-                  ? "How can I help you with your health questions today?"
+                  ? "How can I help you today?"
                   : "Please wait while I load the AI model...",
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
@@ -241,12 +241,11 @@ class _ChatHomeState extends State<ChatHome> {
 
   Widget _buildSuggestedQuestions() {
     final suggestions = [
-      "What are the symptoms of diabetes?",
-      "How can I improve my sleep quality?",
-      "What foods are good for heart health?",
-      "How to manage stress effectively?",
-      "What are the benefits of regular exercise?",
-      "How much water should I drink daily?",
+      "What did I talk about in my last recording?",
+      "When did I mention about the doctor's appointment?",
+      "Show me my last conversation.",
+      "What important information did I share?",
+      "Remind me what what I said about my project deadlines.",
     ];
 
     return Column(

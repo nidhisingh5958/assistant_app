@@ -306,30 +306,40 @@ class _HomePageState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: ListView(
                       padding: EdgeInsets.zero,
                       children: [
-                        _buildHistoryItem(
-                          'Code tutor',
-                          'How to use Visual Studio',
-                          Icons.code,
-                          const Color(0xFFEC4899),
+                        Center(
+                          child: Text(
+                            textAlign: TextAlign.center,
+                            'No history yet. \nStart a new conversation!',
+                            style: TextStyle(
+                              color: white.withOpacity(0.7),
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
-                        _buildHistoryItem(
-                          'Text writer',
-                          'Healthy eating tips',
-                          Icons.edit,
-                          const Color(0xFF8B5CF6),
-                        ),
-                        _buildHistoryItem(
-                          'Image generator',
-                          'Dog in red plaid in house in winter',
-                          Icons.image,
-                          const Color(0xFFF59E0B),
-                        ),
-                        _buildHistoryItem(
-                          'Text writer',
-                          'Best clothing combinations',
-                          Icons.edit,
-                          const Color(0xFFEF4444),
-                        ),
+                        //   _buildHistoryItem(
+                        //     'Code tutor',
+                        //     'How to use Visual Studio',
+                        //     Icons.code,
+                        //     const Color(0xFFEC4899),
+                        //   ),
+                        //   _buildHistoryItem(
+                        //     'Text writer',
+                        //     'Healthy eating tips',
+                        //     Icons.edit,
+                        //     const Color(0xFF8B5CF6),
+                        //   ),
+                        //   _buildHistoryItem(
+                        //     'Image generator',
+                        //     'Dog in red plaid in house in winter',
+                        //     Icons.image,
+                        //     const Color(0xFFF59E0B),
+                        //   ),
+                        //   _buildHistoryItem(
+                        //     'Text writer',
+                        //     'Best clothing combinations',
+                        //     Icons.edit,
+                        //     const Color(0xFFEF4444),
+                        //   ),
                       ],
                     ),
                   ),

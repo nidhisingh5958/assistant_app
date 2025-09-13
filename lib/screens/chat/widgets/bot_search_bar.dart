@@ -84,7 +84,7 @@ class _BotSearchBarState extends State<BotSearchBar> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.transparent,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -104,14 +104,14 @@ class _BotSearchBarState extends State<BotSearchBar> {
                 decoration: InputDecoration(
                   hintText: _isProcessing
                       ? "Processing your question..."
-                      : "Ask me about health, symptoms, nutrition...",
+                      : "Ask me about cconversations, memories...",
                   hintStyle: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 12,
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: const Color.fromARGB(255, 72, 71, 71),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,
@@ -125,6 +125,12 @@ class _BotSearchBarState extends State<BotSearchBar> {
                 onChanged: (text) {
                   setState(() {}); // Rebuild to update send button state
                 },
+                cursorColor: const Color.fromARGB(255, 179, 154, 248),
+                textInputAction: TextInputAction.send,
+                keyboardType: TextInputType.multiline,
+                autocorrect: true,
+                autofocus: false,
+                enableInteractiveSelection: true,
               ),
             ),
           ],
@@ -151,9 +157,7 @@ class _BotSearchBarState extends State<BotSearchBar> {
     return Container(
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isEnabled
-            ? Theme.of(context).colorScheme.primary
-            : Colors.grey[300],
+        color: isEnabled ? Colors.deepPurpleAccent : Colors.grey[300],
         shape: BoxShape.circle,
       ),
       child: IconButton(
