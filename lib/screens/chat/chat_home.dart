@@ -22,6 +22,35 @@ class _ChatHomeState extends State<ChatHome> {
   List<Message> messages = [];
   List<MessageGroup> messageGroups = [];
   bool _showWelcome = true;
+  bool _isModelInitialized = false;
+  String _modelStatus = "Initializing model...";
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeModel();
+  }
+
+  Future<void> _initializeModel() async {
+    try {
+      setState(() {
+        _modelStatus = "Loading DistilGPT-2 model...";
+      });
+
+      // The model initialization will be handled by the BotSearchBar
+      // when the user first tries to send a message
+      setState(() {
+        _isModelInitialized = true; // Assume ready for now
+        _modelStatus = "Model ready - Ask me anything!";
+      });
+    } catch (e) {
+      setState(() {
+        _isModelInitialized = false;
+        _modelStatus = "Model initialization failed";
+      });
+      debugPrint("Model initialization error: $e");
+    }
+  }
 
   void _handleMessageSent(Message message) {
     setState(() {
@@ -58,8 +87,8 @@ class _ChatHomeState extends State<ChatHome> {
   }
 
   void _handleTyping() {
-    // Optional: Add typing indicator logic here
-    // This is called when the bot starts "typing"
+    // Called when the bot starts "typing"
+    debugPrint("Bot is typing...");
   }
 
   void _groupMessages() {
@@ -88,6 +117,22 @@ class _ChatHomeState extends State<ChatHome> {
     }
 
     messageGroups = groups;
+  }
+
+  void _handleSuggestedQuestion(String question) {
+    if (!_isModelInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_modelStatus), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    final message = Message(
+      type: MessageType.text,
+      sender: MessageSender.user,
+      text: question,
+    );
+    _handleMessageSent(message);
   }
 
   @override
@@ -126,6 +171,28 @@ class _ChatHomeState extends State<ChatHome> {
       body: SafeArea(
         child: Column(
           children: [
+            // Model status indicator (only show when model is loading)
+            if (!_isModelInitialized && _showWelcome)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: Colors.orange.withOpacity(0.1),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _modelStatus,
+                      style: TextStyle(color: Colors.orange[800], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+
             // Main content area
             Expanded(
               child: _showWelcome ? _buildWelcomeScreen() : _buildChatScreen(),
@@ -158,12 +225,14 @@ class _ChatHomeState extends State<ChatHome> {
             ),
             const SizedBox(height: 8),
             Text(
-              "How can I help you today?",
+              _isModelInitialized
+                  ? "How can I help you with your health questions today?"
+                  : "Please wait while I load the AI model...",
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            _buildSuggestedQuestions(),
+            if (_isModelInitialized) _buildSuggestedQuestions(),
           ],
         ),
       ),
@@ -176,6 +245,8 @@ class _ChatHomeState extends State<ChatHome> {
       "How can I improve my sleep quality?",
       "What foods are good for heart health?",
       "How to manage stress effectively?",
+      "What are the benefits of regular exercise?",
+      "How much water should I drink daily?",
     ];
 
     return Column(
@@ -194,27 +265,32 @@ class _ChatHomeState extends State<ChatHome> {
           runSpacing: 8,
           children: suggestions.map((suggestion) {
             return InkWell(
-              onTap: () {
-                final message = Message(
-                  type: MessageType.text,
-                  sender: MessageSender.user,
-                  text: suggestion,
-                );
-                _handleMessageSent(message);
-              },
+              onTap: () => _handleSuggestedQuestion(suggestion),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: _isModelInitialized
+                      ? Colors.grey[100]
+                      : Colors.grey[50],
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey[300]!, width: 1),
+                  border: Border.all(
+                    color: _isModelInitialized
+                        ? Colors.grey[300]!
+                        : Colors.grey[200]!,
+                    width: 1,
+                  ),
                 ),
                 child: Text(
                   suggestion,
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _isModelInitialized
+                        ? Colors.black87
+                        : Colors.grey[400],
+                  ),
                 ),
               ),
             );

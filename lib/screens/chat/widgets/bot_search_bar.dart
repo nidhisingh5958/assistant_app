@@ -1,192 +1,168 @@
 import 'package:flutter/material.dart';
-
-import 'package:go_router/go_router.dart';
-import 'package:listen_iq/screens/components/colors.dart';
-import 'package:listen_iq/services/router_constants.dart';
+import 'package:listen_iq/screens/chat/entities/message_bot.dart';
+import 'package:listen_iq/screens/chat/answerUser.dart';
 
 class BotSearchBar extends StatefulWidget {
-  const BotSearchBar({super.key});
+  final Function(Message)? onMessageSent;
+  final Function()? onTyping;
+
+  const BotSearchBar({super.key, this.onMessageSent, this.onTyping});
 
   @override
-  State<BotSearchBar> createState() => BotSearchBarState();
+  State<BotSearchBar> createState() => _BotSearchBarState();
 }
 
-class BotSearchBarState extends State<BotSearchBar>
-    with SingleTickerProviderStateMixin {
-  String query = '';
-  bool isExpanded = false;
-  late AnimationController _animationController;
-  late Animation<double> _heightAnimation;
+class _BotSearchBarState extends State<BotSearchBar> {
+  final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  bool _isProcessing = false;
 
-  final List<String> _suggestions = [];
+  Future<void> _sendMessage() async {
+    final query = _controller.text.trim();
+    if (query.isEmpty || _isProcessing) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
+    // Send user message first
+    final userMessage = Message(
+      type: MessageType.text,
+      sender: MessageSender.user,
+      text: query,
     );
+    widget.onMessageSent?.call(userMessage);
 
-    _heightAnimation =
-        Tween<double>(
-          begin: 50.0, // Initial height
-          end: 300.0, // Expanded height
-        ).animate(
-          CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-        );
+    // Clear input and show processing state
+    _controller.clear();
+    setState(() {
+      _isProcessing = true;
+    });
 
-    _focusNode.addListener(_onFocusChange);
-  }
+    // Notify about typing
+    widget.onTyping?.call();
 
-  void _onFocusChange() {
-    if (_focusNode.hasFocus && !isExpanded) {
-      _expandSearchBar();
+    // Add typing indicator
+    final typingMessage = Message(
+      type: MessageType.text,
+      sender: MessageSender.bot,
+      text: "Thinking...",
+    );
+    widget.onMessageSent?.call(typingMessage);
+
+    try {
+      // Use the askQuestion function from answerUser.dart
+      final botResponseText = await askQuestion(query);
+
+      final botResponse = Message(
+        type: MessageType.text,
+        sender: MessageSender.bot,
+        text: botResponseText,
+      );
+      widget.onMessageSent?.call(botResponse);
+    } catch (e) {
+      // Fallback error message
+      final errorMessage = Message(
+        type: MessageType.text,
+        sender: MessageSender.bot,
+        text:
+            "I encountered an error while processing your question. Please try again.",
+      );
+      widget.onMessageSent?.call(errorMessage);
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
     }
-  }
-
-  void _expandSearchBar() {
-    setState(() {
-      isExpanded = true;
-    });
-    _animationController.forward();
-  }
-
-  void _collapseSearchBar() {
-    setState(() {
-      isExpanded = false;
-    });
-    _animationController.reverse();
-    _focusNode.unfocus();
-  }
-
-  void onQueryChanged(String newQuery) {
-    setState(() {
-      query = newQuery;
-    });
-  }
-
-  void _onSuggestionTap(String suggestion) {
-    setState(() {
-      query = suggestion;
-    });
-    // Navigate to chat screen with the query
-    context.pushNamed(RouteConstants.chat, extra: query);
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Container(
-          width: MediaQuery.of(context).size.width - 32,
-          height: _heightAnimation.value,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            border: Border.all(color: white.withOpacity(0.2)),
-            boxShadow: isExpanded
-                ? [
-                    BoxShadow(
-                      color: black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Search input field
-              TextField(
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _controller,
                 focusNode: _focusNode,
-                controller: TextEditingController(text: query),
-                onChanged: onQueryChanged,
-                textAlignVertical: TextAlignVertical.center,
+                enabled: !_isProcessing,
                 decoration: InputDecoration(
+                  hintText: _isProcessing
+                      ? "Processing your question..."
+                      : "Ask me about health, symptoms, nutrition...",
+                  hintStyle: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
+                    horizontal: 20,
                     vertical: 12,
                   ),
-                  prefixIcon: Icon(Icons.add, color: white, size: 20),
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isExpanded)
-                        IconButton(
-                          icon: Icon(Icons.close, color: white, size: 20),
-                          onPressed: _collapseSearchBar,
-                        )
-                      else
-                        IconButton(
-                          icon: Icon(Icons.search, color: white, size: 20),
-                          onPressed: () {
-                            // Handle search button press
-                            context.pushNamed(
-                              RouteConstants.chat,
-                              extra: query,
-                            );
-                          },
-                        ),
-                    ],
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
                   ),
-                  hintText: "Ask me anything",
-                  hintStyle: TextStyle(color: white.withOpacity(0.5)),
-                  border: InputBorder.none,
+                  suffixIcon: _buildSendButton(),
                 ),
-                style: TextStyle(fontSize: 16),
+                style: const TextStyle(fontSize: 14),
                 minLines: 1,
-                maxLines: 1,
-                onSubmitted: (value) {
-                  if (value.isNotEmpty) {
-                    context.pushNamed(RouteConstants.chat, extra: value);
-                  }
+                maxLines: 4,
+                onFieldSubmitted: (_) => _sendMessage(),
+                onChanged: (text) {
+                  setState(() {}); // Rebuild to update send button state
                 },
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // Suggestions
-              if (isExpanded &&
-                  _suggestions.isNotEmpty &&
-                  _suggestions.any((s) => s.trim().isNotEmpty))
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  height:
-                      _heightAnimation.value -
-                      50, // Subtract input field height
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.all(8.0),
-                    itemCount: _suggestions.length,
-                    itemBuilder: (context, index) {
-                      return ListTile(
-                        dense: true,
-                        title: Text(
-                          _suggestions[index],
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        leading: Icon(
-                          Icons.history,
-                          size: 18,
-                          color: Colors.grey,
-                        ),
-                        onTap: () => _onSuggestionTap(_suggestions[index]),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+  Widget _buildSendButton() {
+    if (_isProcessing) {
+      return Container(
+        margin: const EdgeInsets.all(12),
+        width: 20,
+        height: 20,
+        child: const CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+        ),
+      );
+    }
+
+    final isEnabled = _controller.text.trim().isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isEnabled
+            ? Theme.of(context).colorScheme.primary
+            : Colors.grey[300],
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        icon: Icon(
+          Icons.send_rounded,
+          color: isEnabled ? Colors.white : Colors.grey[600],
+        ),
+        onPressed: isEnabled ? _sendMessage : null,
+      ),
     );
   }
 }

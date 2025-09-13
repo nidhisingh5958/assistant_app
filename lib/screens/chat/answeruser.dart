@@ -1,4 +1,9 @@
-import 'dart:convert';
+/* answerUser.dart          // Contains askQuestion() + model functions
+    ├── askQuestion(query)   // Main RAG processing function
+    ├── loadModel()          // Model loading
+    ├── generateAnswer()     // GPT-2 text generation
+    └── isModelLoaded       // Status getter*/
+
 import 'package:listen_iq/services/file/embeddings.dart';
 import 'package:listen_iq/services/file/vector_store.dart';
 import 'package:tiktoken/tiktoken.dart';
@@ -6,14 +11,15 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'dart:async';
-import 'package:tflite_flutter/tflite_flutter.dart';
 
 late Interpreter _interpreter;
 bool _isModelLoaded = false;
 String _status = "Loading model...";
 final enc = getEncoding('gpt2');
-final TextEditingController _chatController = TextEditingController();
-String _chatResponse = "";
+
+// Export these variables so other files can access them
+bool get isModelLoaded => _isModelLoaded;
+String get modelStatus => _status;
 
 Future<void> _loadModel() async {
   try {
@@ -25,13 +31,123 @@ Future<void> _loadModel() async {
     _status = "Model loaded.";
   } catch (e) {
     debugPrint("❌ Error loading model: $e");
+    _isModelLoaded = false;
+    _status = "Model failed to load: $e";
+  }
+}
+
+// Make loadModel accessible from other files
+Future<void> loadModel() async {
+  await _loadModel();
+}
+
+// Add the missing askQuestion function
+Future<String> askQuestion(String query) async {
+  if (query.isEmpty) return "Please ask a question.";
+
+  // Ensure model is loaded
+  if (!_isModelLoaded) {
+    await _loadModel();
+  }
+
+  // Check if model is loaded before proceeding
+  if (!_isModelLoaded) {
+    return "Model is still loading or failed to load. Please try again.";
+  }
+
+  _status = "Searching embeddings...";
+
+  try {
+    final embeddings = await Embeddings.load();
+
+    // VALIDATE THE MODEL FIRST
+    final isValid = await embeddings.validateModel();
+    if (!isValid) {
+      return "Model validation failed. Check tokenizer compatibility.";
+    }
+
+    final store = await VectorStore.open(embedSize: 384);
+    final queryVec = embeddings.embedTexts([query])[0];
+    final results = await store.search(queryVec, topK: 3);
+    await store.close();
+
+    if (results.isEmpty) {
+      return "I couldn't find relevant information for your question in my knowledge base. Could you try rephrasing your question?";
+    } else {
+      final cleanedContext = results
+          .map(
+            (r) => r.text
+                .replaceAll(
+                  RegExp(r'[^a-zA-Z0-9\s\.,!?]'),
+                  '',
+                ) // Remove special symbols
+                .replaceAll(RegExp(r'\s+'), ' ') // Normalize spaces
+                .trim(),
+          )
+          .join("\n\n")
+          .trim();
+
+      if (cleanedContext.isEmpty) {
+        return "The context doesn't contain the answer to your question.";
+      }
+
+      print("Cleaned context:\n$cleanedContext");
+      print("User's query: $query");
+
+      _status = "Generating answer...";
+
+      final ragPrompt =
+          """
+Please answer only using the context if missing say "The context doesn't contain the answer to your question."
+Context: $cleanedContext
+Question: $query
+Answer:
+""";
+
+      final answer = await generateAnswer(ragPrompt, maxGenLen: 128);
+      String cleanedAnswer = answer.trim();
+
+      // Clean up the response to remove the prompt if it appears
+      if (cleanedAnswer.contains("Answer:")) {
+        final parts = cleanedAnswer.split("Answer:");
+        cleanedAnswer = parts.length > 1 ? parts.last.trim() : cleanedAnswer;
+      }
+
+      // Remove the context and question if they appear in the response
+      if (cleanedAnswer.contains("Context:")) {
+        cleanedAnswer = cleanedAnswer.split("Context:").first.trim();
+      }
+
+      if (cleanedAnswer.contains("Question:")) {
+        cleanedAnswer = cleanedAnswer.split("Question:").first.trim();
+      }
+
+      // Remove any remaining prompt artifacts
+      cleanedAnswer = cleanedAnswer
+          .replaceAll(
+            RegExp(r'^(Please answer|Context:|Question:).*', multiLine: true),
+            '',
+          )
+          .trim();
+
+      _status = "Ready";
+      return cleanedAnswer.isEmpty
+          ? "I couldn't generate a proper response."
+          : cleanedAnswer;
+    }
+  } catch (e) {
+    _status = "Error occurred";
+    return "Error during search: $e";
   }
 }
 
 // ---------------------- Helper for GPT-2 ----------------------
 
 Future<String> generateAnswer(String prompt, {int maxGenLen = 32}) async {
-  await _loadModel();
+  if (!_isModelLoaded) {
+    await _loadModel();
+  }
+
   if (!_isModelLoaded) throw Exception("Model not loaded yet.");
 
   List<int> tokens = enc.encode(prompt).toList();
