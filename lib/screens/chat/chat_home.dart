@@ -15,78 +15,51 @@ class ChatHome extends StatefulWidget {
   State<ChatHome> createState() => _ChatHomeState();
 }
 
-class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
+class _ChatHomeState extends State<ChatHome> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey<BotSearchBarState> _searchBarKey =
-      GlobalKey<BotSearchBarState>();
 
   List<Message> messages = [];
   List<MessageGroup> messageGroups = [];
   bool _showWelcome = true;
 
-  // Performance optimization for on-device processing
-  static const int _maxMessagesInMemory = 30; // Limit for memory management
-  static const Duration _scrollAnimationDuration = Duration(milliseconds: 250);
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      // App going to background - could pause processing
-    } else if (state == AppLifecycleState.resumed) {
-      // App resumed - could reinitialize search bar if needed
-      // _searchBarKey.currentState?.somePublicMethod();
-    }
-  }
-
   void _handleMessageSent(Message message) {
     setState(() {
-      // First message - switch to chat view
+      // If this is the first message, hide welcome screen
       if (_showWelcome) {
         _showWelcome = false;
       }
 
-      // Handle typing indicator replacement for on-device processing
+      // Handle typing indicator replacement
       if (message.sender == MessageSender.bot && messages.isNotEmpty) {
+        // Replace the last bot message if it was a typing indicator
         final lastMessage = messages.last;
         if (lastMessage.sender == MessageSender.bot &&
-            (lastMessage.text?.toLowerCase().contains("processing") == true ||
+            (lastMessage.text == "Thinking..." ||
                 lastMessage.text?.contains("...") == true)) {
           messages.removeLast();
         }
       }
 
       messages.add(message);
-
-      // Memory management for on-device performance
-      if (messages.length > _maxMessagesInMemory) {
-        final removeCount = messages.length - _maxMessagesInMemory;
-        messages.removeRange(0, removeCount);
-        debugPrint(
-          "🧹 Cleaned up $removeCount old messages for memory optimization",
-        );
-      }
-
       _groupMessages();
-      _autoScrollToBottom();
+
+      // Auto-scroll to bottom
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
   }
 
   void _handleTyping() {
-    // Called when bot starts processing - optional UX enhancements
+    // Optional: Add typing indicator logic here
+    // This is called when the bot starts "typing"
   }
 
   void _groupMessages() {
@@ -117,54 +90,6 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
     messageGroups = groups;
   }
 
-  void _autoScrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: _scrollAnimationDuration,
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _clearChatHistory() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear Chat'),
-        content: const Text('Are you sure you want to clear the chat history?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _showWelcome = true;
-                messages.clear();
-                messageGroups.clear();
-              });
-            },
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _handleSuggestedQuestion(String question) {
-    final message = Message(
-      type: MessageType.text,
-      sender: MessageSender.user,
-      text: question,
-    );
-    _handleMessageSent(message);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -172,19 +97,24 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
       drawer: const SideMenu(),
       appBar: AppHeader(
         title: "ListenIQ",
-        chatTitle: _showWelcome ? null : "Local Health AI",
+        chatTitle: _showWelcome ? null : "Health Assistant",
         isInChat: !_showWelcome,
         onMenuPressed: () {
-          _scaffoldKey.currentState?.openDrawer();
+          final scaffoldState = _scaffoldKey.currentState;
+          if (scaffoldState?.hasDrawer == true) {
+            scaffoldState!.openDrawer();
+          }
         },
-        onBackPressed: _showWelcome ? null : _clearChatHistory,
+        onBackPressed: _showWelcome
+            ? null
+            : () {
+                setState(() {
+                  _showWelcome = true;
+                  messages.clear();
+                  messageGroups.clear();
+                });
+              },
         actions: [
-          if (!_showWelcome)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Clear Chat',
-              onPressed: _clearChatHistory,
-            ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
@@ -201,9 +131,8 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
               child: _showWelcome ? _buildWelcomeScreen() : _buildChatScreen(),
             ),
 
-            // Search bar (always present)
+            // Search bar at the bottom
             BotSearchBar(
-              key: _searchBarKey,
               onMessageSent: _handleMessageSent,
               onTyping: _handleTyping,
             ),
@@ -215,79 +144,29 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
 
   Widget _buildWelcomeScreen() {
     return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Logo or icon
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.psychology,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Welcome text
-          Text(
-            "Hello! 👋",
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "I'm your local health assistant, powered by on-device AI",
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-
-          // Features
-          _buildFeatureList(),
-          const SizedBox(height: 32),
-
-          // Suggested questions
-          _buildSuggestedQuestions(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeatureList() {
-    final features = [
-      {'icon': Icons.security, 'text': 'Private & Secure'},
-      {'icon': Icons.offline_bolt, 'text': 'Works Offline'},
-      {'icon': Icons.speed, 'text': 'Fast Processing'},
-    ];
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: features.map((feature) {
-        return Column(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              feature['icon'] as IconData,
-              color: Theme.of(context).colorScheme.primary,
-              size: 24,
+            Text(
+              "Hello! 👋",
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              feature['text'] as String,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              "How can I help you today?",
+              style: Theme.of(context).textTheme.bodyLarge,
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 32),
+            _buildSuggestedQuestions(),
           ],
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
 
@@ -297,8 +176,6 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
       "How can I improve my sleep quality?",
       "What foods are good for heart health?",
       "How to manage stress effectively?",
-      "What is a healthy diet?",
-      "How much exercise do I need daily?",
     ];
 
     return Column(
@@ -306,36 +183,38 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
       children: [
         Text(
           "Try asking:",
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          alignment: WrapAlignment.center,
           children: suggestions.map((suggestion) {
             return InkWell(
-              onTap: () => _handleSuggestedQuestion(suggestion),
-              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                final message = Message(
+                  type: MessageType.text,
+                  sender: MessageSender.user,
+                  text: suggestion,
+                );
+                _handleMessageSent(message);
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 10,
+                  vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
+                  color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.grey[300]!, width: 1),
                 ),
                 child: Text(
                   suggestion,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
                 ),
               ),
             );
@@ -346,38 +225,19 @@ class _ChatHomeState extends State<ChatHome> with WidgetsBindingObserver {
   }
 
   Widget _buildChatScreen() {
-    if (messages.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              "Start your conversation",
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              "Ask me anything about health",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
-
     return ListView.separated(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       itemBuilder: (context, index) =>
           ChatMessageWidget(group: messageGroups[index]),
-      separatorBuilder: (context, index) => const SizedBox(height: 20),
+      separatorBuilder: (context, index) => const SizedBox(height: 24),
       itemCount: messageGroups.length,
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
