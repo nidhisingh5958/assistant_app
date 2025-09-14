@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:listen_iq/services/video/models/action_detector.dart';
 
 class Detection {
   final int classId;
@@ -35,42 +36,7 @@ class Detection {
   }
 }
 
-class ActionDetection {
-  final int actionId;
-  final String actionName;
-  final double confidence;
-  final DateTime timestamp;
-  final Color color;
-
-  ActionDetection({
-    required this.actionId,
-    required this.actionName,
-    required this.confidence,
-    required this.timestamp,
-    Color? color,
-  }) : color = color ?? _getColorForAction(actionId);
-
-  static Color _getColorForAction(int actionId) {
-    final colors = [
-      Colors.red,
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.teal,
-      Colors.pink,
-      Colors.indigo,
-      Colors.cyan,
-      Colors.amber,
-    ];
-    return colors[actionId % colors.length];
-  }
-
-  @override
-  String toString() {
-    return 'ActionDetection{actionName: $actionName, confidence: ${confidence.toStringAsFixed(2)}, timestamp: $timestamp}';
-  }
-}
+// Use ActionDetection from action_detector.dart
 
 class DetectionResult {
   final List<Detection> detections;
@@ -112,13 +78,9 @@ class DetectionResult {
 
   // Get actions above a confidence threshold
   List<ActionDetection> getActionsAboveThreshold(double threshold) {
+    // Use ActionDetection from action_detector.dart
     return actionDetections
         .where((action) => action.confidence >= threshold)
         .toList();
-  }
-
-  @override
-  String toString() {
-    return 'DetectionResult{objects: ${detections.length}, actions: ${actionDetections.length}, processingTime: ${processingTime.inMilliseconds}ms}';
   }
 }

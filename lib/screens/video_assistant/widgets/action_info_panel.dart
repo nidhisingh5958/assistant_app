@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
 
 class DetectionInfoPanel extends StatelessWidget {
-  final DetectionResult result;
+  final dynamic result;
   final double avgInferenceTime;
   final int fps;
 

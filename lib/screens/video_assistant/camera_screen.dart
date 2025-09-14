@@ -2,17 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as imglib;
-import 'package:listen_iq/screens/video_assistant/detection_screen.dart'
-    as detection_screen;
+import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
 import 'package:listen_iq/screens/video_assistant/widgets/detection_info_panel.dart'
     as detection_widgets;
 import 'package:listen_iq/screens/video_assistant/widgets/detection_overlay.dart';
-import 'package:listen_iq/screens/video_assistant/widgets/action_info_panel.dart'
-    as action_widgets;
 import 'package:listen_iq/services/video/camera_service.dart';
 import 'package:listen_iq/services/video/models/video_detector.dart';
-import 'package:listen_iq/services/video/models/action_detector.dart'
-    as service_models;
+import 'package:listen_iq/services/video/models/action_detector.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -26,14 +22,22 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   late CameraService _cameraService;
   late VideoDetector _videoDetector;
-  late service_models.ActionDetector _actionDetector;
+  ActionDetector?
+  _actionDetector; // Make nullable to handle initialization failures
 
-  detection_screen.DetectionResult? _lastResult;
+  DetectionResult? _lastResult;
   bool _isProcessing = false;
   bool _showInfo = true;
   bool _showActions = true;
-  bool _actionDetectionEnabled = true;
+  bool _actionDetectionEnabled = false; // Start with action detection disabled
+  bool _actionDetectorAvailable = false;
   StreamSubscription? _imageSubscription;
+
+  // Initialization state tracking
+  String _initializationStatus = 'Starting initialization...';
+  bool _cameraInitialized = false;
+  bool _videoDetectorInitialized = false;
+  bool _actionDetectorInitialized = false;
 
   // Performance metrics
   double _avgInferenceTime = 0.0;
@@ -47,26 +51,79 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     _cameraService = CameraService();
     _videoDetector = VideoDetector();
-    _actionDetector = service_models.ActionDetector();
     _initializeServices();
   }
 
   Future<void> _initializeServices() async {
     try {
-      // Initialize detectors
-      await _videoDetector.initialize();
-      await _actionDetector.initialize(useQuantisedModel: true);
+      // Step 1: Initialize Video Detector (required)
+      setState(() {
+        _initializationStatus = 'Initializing object detection model...';
+      });
 
-      // Initialize camera
+      await _videoDetector.initialize(
+        preferOnnx: false,
+      ); // Start with TFLite for stability
+      _videoDetectorInitialized = _videoDetector.isInitialized;
+
+      print('Video detector initialized: $_videoDetectorInitialized');
+
+      if (!_videoDetectorInitialized) {
+        throw Exception('Failed to initialize video detector');
+      }
+
+      // Step 2: Initialize Camera (required)
+      setState(() {
+        _initializationStatus = 'Initializing camera...';
+      });
+
       await _cameraService.initializeCamera(widget.cameras);
+      _cameraInitialized = _cameraService.isInitialized;
 
-      if (_cameraService.isInitialized) {
-        // Start image stream processing
+      print('Camera initialized: $_cameraInitialized');
+
+      if (!_cameraInitialized) {
+        throw Exception('Failed to initialize camera');
+      }
+
+      // Step 3: Try to initialize Action Detector (optional)
+      setState(() {
+        _initializationStatus = 'Initializing action detection model...';
+      });
+
+      try {
+        _actionDetector = ActionDetector();
+        await _actionDetector!.initialize(useQuantisedModel: true);
+        _actionDetectorInitialized = _actionDetector!.isInitialized;
+        _actionDetectorAvailable = _actionDetectorInitialized;
+
+        print('Action detector initialized: $_actionDetectorInitialized');
+      } catch (e) {
+        print('Action detector initialization failed (optional): $e');
+        _actionDetectorInitialized = false;
+        _actionDetectorAvailable = false;
+        _actionDetector = null;
+      }
+
+      // Step 4: Start image processing if camera and video detector are ready
+      if (_cameraInitialized && _videoDetectorInitialized) {
+        setState(() {
+          _initializationStatus = 'Starting video processing...';
+        });
+
         _startImageProcessing();
-        setState(() {});
+
+        setState(() {
+          _initializationStatus = 'Ready!';
+        });
+
+        print('All services initialized successfully');
       }
     } catch (e) {
-      print('Error initializing services: $e');
+      print('Critical initialization error: $e');
+      setState(() {
+        _initializationStatus = 'Error: ${e.toString()}';
+      });
       _showErrorDialog('Initialization Error', e.toString());
     }
   }
@@ -75,7 +132,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _cameraService.startImageStream();
 
     _imageSubscription = _cameraService.imageStream?.listen((image) {
-      if (!_isProcessing && mounted) {
+      if (!_isProcessing && mounted && _videoDetectorInitialized) {
         _isProcessing = true;
         _processFrame(image);
       }
@@ -98,20 +155,25 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      // Run object detection
+      // Run object detection (required)
       final detections = _videoDetector.detectObjects(convertedImage);
 
-      // Run action detection if enabled
-      List<detection_screen.ActionDetection> actionDetections = [];
-      if (_actionDetectionEnabled && _actionDetector.isInitialized) {
-        final actionStopwatch = Stopwatch()..start();
-        actionDetections = _actionDetector
-            .detectActions(convertedImage)
-            .cast<detection_screen.ActionDetection>();
-        actionStopwatch.stop();
+      // Run action detection if enabled and available
+      List<ActionDetection> actionDetections = [];
+      if (_actionDetectionEnabled &&
+          _actionDetectorAvailable &&
+          _actionDetector != null) {
+        try {
+          final actionStopwatch = Stopwatch()..start();
+          actionDetections = _actionDetector!.detectActions(convertedImage);
+          actionStopwatch.stop();
 
-        // Update action inference time
-        _updateActionMetrics(actionStopwatch.elapsed);
+          // Update action inference time
+          _updateActionMetrics(actionStopwatch.elapsed);
+        } catch (e) {
+          print('Action detection error (non-critical): $e');
+          // Don't stop the whole process, just skip action detection
+        }
       }
 
       stopwatch.stop();
@@ -123,7 +185,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Update UI with results
       if (mounted) {
         setState(() {
-          _lastResult = detection_screen.DetectionResult(
+          _lastResult = DetectionResult(
             detections: detections,
             actionDetections: actionDetections,
             processingTime: processingTime,
@@ -219,12 +281,35 @@ class _CameraScreenState extends State<CameraScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: Text(message),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            SizedBox(height: 16),
+            Text('Debug Info:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Camera: ${_cameraInitialized ? 'OK' : 'Failed'}'),
+            Text(
+              'Video Detector: ${_videoDetectorInitialized ? 'OK' : 'Failed'}',
+            ),
+            Text(
+              'Action Detector: ${_actionDetectorInitialized ? 'OK' : 'Failed'}',
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text('OK'),
           ),
+          if (!_cameraInitialized || !_videoDetectorInitialized)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _initializeServices(); // Retry initialization
+              },
+              child: Text('Retry'),
+            ),
         ],
       ),
     );
@@ -232,7 +317,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_cameraService.isInitialized) {
+    // Show loading screen if essential services aren't ready
+    if (!_cameraInitialized || !_videoDetectorInitialized) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
@@ -242,13 +328,40 @@ class _CameraScreenState extends State<CameraScreen> {
               CircularProgressIndicator(),
               SizedBox(height: 16),
               Text(
-                'Initializing Camera & AI Models...',
+                _initializationStatus,
                 style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
-              Text(
-                'Loading Action Detection Model...',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              SizedBox(height: 24),
+              // Debug information
+              Container(
+                padding: EdgeInsets.all(16),
+                margin: EdgeInsets.symmetric(horizontal: 32),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Initialization Status:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    _buildStatusRow('Camera', _cameraInitialized),
+                    _buildStatusRow(
+                      'Object Detection',
+                      _videoDetectorInitialized,
+                    ),
+                    _buildStatusRow(
+                      'Action Detection',
+                      _actionDetectorInitialized,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -302,7 +415,9 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
                     Text(
-                      'Object & Action Detection',
+                      _actionDetectorAvailable
+                          ? 'Object & Action Detection'
+                          : 'Object Detection Only',
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
@@ -324,49 +439,52 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // Action Detection Toggle
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 70,
-            left: 16,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _actionDetectionEnabled
-                    ? Colors.green.withOpacity(0.8)
-                    : Colors.grey.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _actionDetectionEnabled = !_actionDetectionEnabled;
-                    if (!_actionDetectionEnabled) {
-                      _actionDetector.clearFrameBuffer();
-                    }
-                  });
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _actionDetectionEnabled ? Icons.play_arrow : Icons.pause,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Actions',
-                      style: TextStyle(
+          // Action Detection Toggle (only if available)
+          if (_actionDetectorAvailable)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 70,
+              left: 16,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _actionDetectionEnabled
+                      ? Colors.green.withOpacity(0.8)
+                      : Colors.grey.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _actionDetectionEnabled = !_actionDetectionEnabled;
+                      if (!_actionDetectionEnabled && _actionDetector != null) {
+                        _actionDetector!.clearFrameBuffer();
+                      }
+                    });
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _actionDetectionEnabled
+                            ? Icons.play_arrow
+                            : Icons.pause,
                         color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                        size: 16,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 4),
+                      Text(
+                        'Actions',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
           // Performance Indicators
           Positioned(
@@ -390,7 +508,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                 ),
-                if (_actionDetectionEnabled) ...[
+                if (_actionDetectionEnabled && _actionDetectorAvailable) ...[
                   SizedBox(height: 4),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -417,7 +535,7 @@ class _CameraScreenState extends State<CameraScreen> {
           // Detection Info Panel
           if (_showInfo && _lastResult != null)
             Positioned(
-              bottom: _lastResult!.actionDetections.isNotEmpty && _showActions
+              bottom: (_lastResult!.actionDetections.isNotEmpty && _showActions)
                   ? 120
                   : 16,
               left: 16,
@@ -429,18 +547,25 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
 
-          // Action Info Panel
-          if (_showActions && _lastResult?.actionDetections.isNotEmpty == true)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: action_widgets.DetectionInfoPanel(
-                result: _lastResult!,
-                avgInferenceTime: _avgActionInferenceTime,
-                fps: _fps,
-              ),
-            ),
+          // Action Info Panel (only if action detection is available and enabled)
+          // ActionInfoPanel is not implemented. Placeholder for future widget.
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, bool status) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: Colors.white70, fontSize: 12)),
+          Icon(
+            status ? Icons.check_circle : Icons.error,
+            color: status ? Colors.green : Colors.red,
+            size: 16,
+          ),
         ],
       ),
     );
@@ -451,7 +576,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _imageSubscription?.cancel();
     _cameraService.dispose();
     _videoDetector.dispose();
-    _actionDetector.dispose();
+    _actionDetector?.dispose();
     super.dispose();
   }
 }

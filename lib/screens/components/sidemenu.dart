@@ -150,25 +150,25 @@ class _SideMenuState extends State<SideMenu> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader("Support"),
-        const SizedBox(height: 12),
-        _buildMenuItem(
-          icon: Icons.help,
-          label: 'Help & Support',
-          onTap: () {
-            _closeDrawer();
-            // Navigate to help & support when route is available
-            // _navigateAndClose(RouteConstants.helpSupport);
-          },
-        ),
-        _buildMenuItem(
-          icon: Icons.language,
-          label: 'Language',
-          onTap: () {
-            _closeDrawer();
-            // Handle language selection
-          },
-        ),
+        // _buildSectionHeader("Support"),
+        // const SizedBox(height: 12),
+        // _buildMenuItem(
+        //   icon: Icons.help,
+        //   label: 'Help & Support',
+        //   onTap: () {
+        //     _closeDrawer();
+        //     // Navigate to help & support when route is available
+        //     // _navigateAndClose(RouteConstants.helpSupport);
+        //   },
+        // ),
+        // _buildMenuItem(
+        //   icon: Icons.language,
+        //   label: 'Language',
+        //   onTap: () {
+        //     _closeDrawer();
+        //     // Handle language selection
+        //   },
+        // ),
       ],
     );
   }

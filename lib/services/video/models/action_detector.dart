@@ -4,29 +4,28 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
-import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as img;
 
+// Simplified version without ONNX dependency for troubleshooting
 class ActionDetector {
-  static const String MODEL_PATH = 'assets/models/action_model.onnx';
-  static const String QUANTISED_MODEL_PATH =
-      'assets/models/action_model_quantised.onnx';
   static const String LABELS_PATH = 'assets/labels/action_labels.txt';
 
   // Model configurations for action detection
   static const int INPUT_WIDTH = 224;
   static const int INPUT_HEIGHT = 224;
-  static const int SEQUENCE_LENGTH =
-      16; // Number of frames for action detection
+  static const int SEQUENCE_LENGTH = 8; // Reduced for testing
   static const double CONFIDENCE_THRESHOLD = 0.5;
 
-  OrtSession? _session;
   List<String> _actionLabels = [];
   bool _isInitialized = false;
   bool _useQuantisedModel = false;
 
   // Frame buffer for temporal action detection
   List<img.Image> _frameBuffer = [];
+
+  // Mock detection for testing
+  bool _enableMockDetection = true;
+  int _mockDetectionCounter = 0;
 
   bool get isInitialized => _isInitialized;
   List<String> get actionLabels => _actionLabels;
@@ -35,28 +34,26 @@ class ActionDetector {
     _useQuantisedModel = useQuantisedModel;
 
     try {
-      // Load the ONNX model
-      final modelPath = _useQuantisedModel ? QUANTISED_MODEL_PATH : MODEL_PATH;
-      final modelBytes = await rootBundle.load(modelPath);
+      print('Starting action detector initialization...');
 
-      // Create ONNX Runtime session
-      _session = OrtSession.fromBuffer(
-        modelBytes.buffer.asUint8List(),
-        OrtSessionOptions(),
-      );
-
-      // Load action labels
+      // Load action labels first
       await _loadActionLabels();
+      print('Action labels loaded: ${_actionLabels.length}');
+
+      // For now, just use mock detection to test the UI
+      // Later we can add ONNX model loading
+      _enableMockDetection = true;
 
       _isInitialized = true;
-      print('Action detection model initialized successfully');
+      print('Action detection model initialized successfully (mock mode)');
       print(
-        'Using ${_useQuantisedModel ? 'quantised' : 'full precision'} model',
+        'Using ${_useQuantisedModel ? 'quantised' : 'full precision'} model (simulated)',
       );
       print('Loaded ${_actionLabels.length} action classes');
     } catch (e) {
       print('Error initializing action detector: $e');
       _isInitialized = false;
+      rethrow; // Re-throw to let caller handle the error
     }
   }
 
@@ -68,9 +65,10 @@ class ActionDetector {
           .where((label) => label.trim().isNotEmpty)
           .map((label) => label.trim())
           .toList();
-      print('Loaded ${_actionLabels.length} action labels');
+      print('Loaded ${_actionLabels.length} action labels from file');
     } catch (e) {
-      print('Error loading action labels: $e');
+      print('Error loading action labels from file: $e');
+      print('Using fallback action labels');
       // Fallback action labels for common human actions
       _actionLabels = [
         'walking',
@@ -94,7 +92,7 @@ class ActionDetector {
   }
 
   List<ActionDetection> detectActions(img.Image frame) {
-    if (!_isInitialized || _session == null) {
+    if (!_isInitialized) {
       return [];
     }
 
@@ -112,124 +110,59 @@ class ActionDetector {
         return [];
       }
 
-      // Preprocess frame sequence
-      final inputTensor = _preprocessFrameSequence(_frameBuffer);
-
-      // Create input for ONNX model
-      final inputs = {
-        'input': OrtValueTensor.createTensorWithDataList(inputTensor, [
-          1,
-          SEQUENCE_LENGTH,
-          INPUT_HEIGHT,
-          INPUT_WIDTH,
-          3,
-        ]),
-      };
-
-      // Run inference
-      final stopwatch = Stopwatch()..start();
-      final outputs = _session!.run(OrtRunOptions(), inputs);
-      stopwatch.stop();
-
-      print('Action inference time: ${stopwatch.elapsedMilliseconds}ms');
-
-      // Process outputs
-      final actionDetections = _processActionOutputs({
-        'output': outputs.first!,
-      });
-
-      // Clean up
-      for (final input in inputs.values) {
-        input.release();
-      }
-      for (final output in outputs) {
-        output?.release();
+      // For testing purposes, use mock detection
+      if (_enableMockDetection) {
+        return _generateMockDetections();
       }
 
-      return actionDetections;
+      // TODO: Implement actual ONNX inference here
+      return [];
     } catch (e) {
       print('Error during action detection: $e');
       return [];
     }
   }
 
-  List<List<List<List<double>>>> _preprocessFrameSequence(
-    List<img.Image> frames,
-  ) {
-    final processedSequence = <List<List<List<double>>>>[];
+  List<ActionDetection> _generateMockDetections() {
+    _mockDetectionCounter++;
 
-    for (final frame in frames) {
-      // Resize frame to model input size
-      final resizedFrame = img.copyResize(
-        frame,
-        width: INPUT_WIDTH,
-        height: INPUT_HEIGHT,
+    // Generate mock detections every few frames
+    if (_mockDetectionCounter % 30 != 0) {
+      return [];
+    }
+
+    final random = math.Random();
+    final detections = <ActionDetection>[];
+
+    // Randomly generate 1-3 action detections
+    final numDetections = 1 + random.nextInt(3);
+
+    for (int i = 0; i < numDetections; i++) {
+      final actionIndex = random.nextInt(_actionLabels.length);
+      final confidence = 0.5 + random.nextDouble() * 0.4; // 0.5 to 0.9
+
+      detections.add(
+        ActionDetection(
+          actionId: actionIndex,
+          actionName: _actionLabels[actionIndex],
+          confidence: confidence,
+          timestamp: DateTime.now(),
+        ),
       );
-
-      // Convert to normalized RGB values
-      final frameData = <List<List<double>>>[];
-
-      for (int y = 0; y < INPUT_HEIGHT; y++) {
-        final row = <List<double>>[];
-        for (int x = 0; x < INPUT_WIDTH; x++) {
-          final pixel = resizedFrame.getPixel(x, y);
-
-          // Normalize pixel values to [0, 1]
-          row.add([pixel.r / 255.0, pixel.g / 255.0, pixel.b / 255.0]);
-        }
-        frameData.add(row);
-      }
-
-      processedSequence.add(frameData);
     }
 
-    return processedSequence;
-  }
+    // Sort by confidence
+    detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-  List<ActionDetection> _processActionOutputs(Map<String, OrtValue> outputs) {
-    final actionDetections = <ActionDetection>[];
-
-    try {
-      // Get action probabilities (adjust key based on your model)
-      final outputData =
-          (outputs['output'] ?? outputs.values.first) as OrtValueTensor;
-      final probabilities = outputData.value as List<double>;
-
-      // Find actions above confidence threshold
-      for (
-        int i = 0;
-        i < probabilities.length && i < _actionLabels.length;
-        i++
-      ) {
-        final confidence = probabilities[i];
-
-        if (confidence > CONFIDENCE_THRESHOLD) {
-          actionDetections.add(
-            ActionDetection(
-              actionId: i,
-              actionName: _actionLabels[i],
-              confidence: confidence,
-              timestamp: DateTime.now(),
-            ),
-          );
-        }
-      }
-
-      // Sort by confidence
-      actionDetections.sort((a, b) => b.confidence.compareTo(a.confidence));
-    } catch (e) {
-      print('Error processing action outputs: $e');
-    }
-
-    return actionDetections;
+    return detections;
   }
 
   void clearFrameBuffer() {
     _frameBuffer.clear();
+    _mockDetectionCounter = 0;
   }
 
   void dispose() {
-    _session?.release();
     _frameBuffer.clear();
     _isInitialized = false;
   }
