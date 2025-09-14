@@ -1,4 +1,4 @@
-// services/vector_store.dart
+// A simple vector store implementation using local file storage in Dart.
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
@@ -24,12 +24,13 @@ class VectorSearchResult {
     'similarity': similarity,
   };
 
-  factory VectorSearchResult.fromJson(Map<String, dynamic> json) => VectorSearchResult(
-    id: json['id'],
-    text: json['text'],
-    metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
-    similarity: json['similarity']?.toDouble() ?? 0.0,
-  );
+  factory VectorSearchResult.fromJson(Map<String, dynamic> json) =>
+      VectorSearchResult(
+        id: json['id'],
+        text: json['text'],
+        metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
+        similarity: json['similarity']?.toDouble() ?? 0.0,
+      );
 }
 
 class VectorStoreEntry {
@@ -52,12 +53,13 @@ class VectorStoreEntry {
     'metadata': metadata,
   };
 
-  factory VectorStoreEntry.fromJson(Map<String, dynamic> json) => VectorStoreEntry(
-    id: json['id'],
-    embedding: List<double>.from(json['embedding']),
-    text: json['text'],
-    metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
-  );
+  factory VectorStoreEntry.fromJson(Map<String, dynamic> json) =>
+      VectorStoreEntry(
+        id: json['id'],
+        embedding: List<double>.from(json['embedding']),
+        text: json['text'],
+        metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
+      );
 }
 
 class VectorStore {
@@ -82,7 +84,7 @@ class VectorStore {
         final content = await file.readAsString();
         final jsonData = json.decode(content) as Map<String, dynamic>;
         final entries = jsonData['entries'] as List?;
-        
+
         if (entries != null) {
           _entries.clear();
           for (final entryJson in entries) {
@@ -113,26 +115,35 @@ class VectorStore {
     Map<String, dynamic>? metadata,
   }) async {
     if (embedding.length != embedSize) {
-      throw ArgumentError('Embedding size ${embedding.length} does not match expected $embedSize');
+      throw ArgumentError(
+        'Embedding size ${embedding.length} does not match expected $embedSize',
+      );
     }
 
     // Remove existing entry with same ID if it exists
     _entries.removeWhere((entry) => entry.id == id);
 
     // Add new entry
-    _entries.add(VectorStoreEntry(
-      id: id,
-      embedding: embedding,
-      text: text,
-      metadata: metadata ?? {},
-    ));
+    _entries.add(
+      VectorStoreEntry(
+        id: id,
+        embedding: embedding,
+        text: text,
+        metadata: metadata ?? {},
+      ),
+    );
 
     await _save();
   }
 
-  Future<List<VectorSearchResult>> search(List<double> queryEmbedding, {int topK = 5}) async {
+  Future<List<VectorSearchResult>> search(
+    List<double> queryEmbedding, {
+    int topK = 5,
+  }) async {
     if (queryEmbedding.length != embedSize) {
-      throw ArgumentError('Query embedding size ${queryEmbedding.length} does not match expected $embedSize');
+      throw ArgumentError(
+        'Query embedding size ${queryEmbedding.length} does not match expected $embedSize',
+      );
     }
 
     if (_entries.isEmpty) {
@@ -141,20 +152,22 @@ class VectorStore {
 
     // Calculate cosine similarities
     final results = <VectorSearchResult>[];
-    
+
     for (final entry in _entries) {
       final similarity = _cosineSimilarity(queryEmbedding, entry.embedding);
-      results.add(VectorSearchResult(
-        id: entry.id,
-        text: entry.text,
-        metadata: entry.metadata,
-        similarity: similarity,
-      ));
+      results.add(
+        VectorSearchResult(
+          id: entry.id,
+          text: entry.text,
+          metadata: entry.metadata,
+          similarity: similarity,
+        ),
+      );
     }
 
     // Sort by similarity (descending) and take top K
     results.sort((a, b) => b.similarity.compareTo(a.similarity));
-    
+
     return results.take(topK).toList();
   }
 

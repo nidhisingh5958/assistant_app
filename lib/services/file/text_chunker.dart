@@ -1,3 +1,4 @@
+// A simple text chunker that splits text into smaller chunks based on a specified chunk size.
 class TextChunker {
   final int chunkSize;
 
@@ -7,7 +8,10 @@ class TextChunker {
     final words = text.split(RegExp(r'\s+'));
     List<String> chunks = [];
     for (var i = 0; i < words.length; i += chunkSize) {
-      final chunk = words.sublist(i, i + chunkSize > words.length ? words.length : i + chunkSize);
+      final chunk = words.sublist(
+        i,
+        i + chunkSize > words.length ? words.length : i + chunkSize,
+      );
       chunks.add(chunk.join(" ").trim());
     }
     return chunks;
