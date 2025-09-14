@@ -3,59 +3,115 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
 import 'package:path/path.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as img;
 
 class VideoDetector {
-  static const String MODEL_PATH = 'assets/models/video_detection_model.tflite';
+  static const String TFLITE_MODEL_PATH =
+      'assets/models/video_detection_model.tflite';
+  static const String ONNX_MODEL_PATH =
+      'assets/models/object_detection_model.onnx';
   static const String LABELS_PATH = 'assets/labels/labels.txt';
   static const int INPUT_SIZE = 640; // Adjust based on your model
 
-  Interpreter? _interpreter;
+  // TensorFlow Lite components (fallback)
+  Interpreter? _tfliteInterpreter;
+
+  // ONNX Runtime components (preferred)
+  OrtSession? _onnxSession;
+
   List<String> _labels = [];
   bool _isInitialized = false;
+  bool _useOnnx = false;
 
   // Model input/output shapes - adjust based on your model
   late List<List<int>> _inputShapes;
   late List<List<int>> _outputShapes;
 
   bool get isInitialized => _isInitialized;
+  bool get isUsingOnnx => _useOnnx;
 
-  Future<void> initialize() async {
+  Future<void> initialize({bool preferOnnx = true}) async {
     try {
-      // Load the TFLite model
-      _interpreter = await Interpreter.fromAsset(MODEL_PATH);
-
-      // Get input and output shapes
-      _inputShapes = _interpreter!
-          .getInputTensors()
-          .map((tensor) => tensor.shape)
-          .toList();
-      _outputShapes = _interpreter!
-          .getOutputTensors()
-          .map((tensor) => tensor.shape)
-          .toList();
+      if (preferOnnx) {
+        // Try to initialize ONNX first
+        final success = await _initializeOnnx();
+        if (success) {
+          _useOnnx = true;
+          _isInitialized = true;
+          print('Video detection model initialized with ONNX Runtime');
+        } else {
+          // Fallback to TensorFlow Lite
+          await _initializeTfLite();
+        }
+      } else {
+        // Use TensorFlow Lite directly
+        await _initializeTfLite();
+      }
 
       // Load labels
       await _loadLabels();
 
-      _isInitialized = true;
-      print('Video detection model initialized successfully');
-      print('Input shapes: $_inputShapes');
-      print('Output shapes: $_outputShapes');
+      if (_isInitialized) {
+        print('Video detection model initialized successfully');
+        print('Using ${_useOnnx ? 'ONNX Runtime' : 'TensorFlow Lite'}');
+        print('Input shapes: ${_useOnnx ? 'ONNX format' : _inputShapes}');
+      }
     } catch (e) {
       print('Error initializing video detector: $e');
       _isInitialized = false;
     }
   }
 
+  Future<bool> _initializeOnnx() async {
+    try {
+      // Load the ONNX model
+      final modelBytes = await rootBundle.load(ONNX_MODEL_PATH);
+
+      // Create ONNX Runtime session
+      _onnxSession = OrtSession.fromBuffer(
+        modelBytes.buffer.asUint8List(),
+        OrtSessionOptions(),
+      );
+
+      return true;
+    } catch (e) {
+      print('Failed to initialize ONNX model: $e');
+      return false;
+    }
+  }
+
+  Future<void> _initializeTfLite() async {
+    try {
+      // Load the TFLite model
+      _tfliteInterpreter = await Interpreter.fromAsset(TFLITE_MODEL_PATH);
+
+      // Get input and output shapes
+      _inputShapes = _tfliteInterpreter!
+          .getInputTensors()
+          .map((tensor) => tensor.shape)
+          .toList();
+      _outputShapes = _tfliteInterpreter!
+          .getOutputTensors()
+          .map((tensor) => tensor.shape)
+          .toList();
+
+      _useOnnx = false;
+      _isInitialized = true;
+      print('Video detection model initialized with TensorFlow Lite');
+    } catch (e) {
+      print('Failed to initialize TensorFlow Lite model: $e');
+      _isInitialized = false;
+    }
+  }
+
   Future<void> _loadLabels() async {
     try {
-      final labelsData = await DefaultAssetBundle.of(
-        context as BuildContext,
-      ).loadString(LABELS_PATH);
+      final labelsData = await rootBundle.loadString(LABELS_PATH);
       _labels = labelsData
           .split('\n')
           .where((label) => label.trim().isNotEmpty)
@@ -63,16 +119,161 @@ class VideoDetector {
       print('Loaded ${_labels.length} labels');
     } catch (e) {
       print('Error loading labels: $e');
-      // Fallback labels - adjust based on your model
-      _labels = ['person', 'car', 'bicycle', 'dog', 'cat'];
+      // Fallback labels - Common COCO dataset labels
+      _labels = [
+        'person',
+        'bicycle',
+        'car',
+        'motorcycle',
+        'airplane',
+        'bus',
+        'train',
+        'truck',
+        'boat',
+        'traffic light',
+        'fire hydrant',
+        'stop sign',
+        'parking meter',
+        'bench',
+        'bird',
+        'cat',
+        'dog',
+        'horse',
+        'sheep',
+        'cow',
+        'elephant',
+        'bear',
+        'zebra',
+        'giraffe',
+        'backpack',
+        'umbrella',
+        'handbag',
+        'tie',
+        'suitcase',
+        'frisbee',
+        'skis',
+        'snowboard',
+        'sports ball',
+        'kite',
+        'baseball bat',
+        'baseball glove',
+        'skateboard',
+        'surfboard',
+        'tennis racket',
+        'bottle',
+        'wine glass',
+        'cup',
+        'fork',
+        'knife',
+        'spoon',
+        'bowl',
+        'banana',
+        'apple',
+        'sandwich',
+        'orange',
+        'broccoli',
+        'carrot',
+        'hot dog',
+        'pizza',
+        'donut',
+        'cake',
+        'chair',
+        'couch',
+        'potted plant',
+        'bed',
+        'dining table',
+        'toilet',
+        'tv',
+        'laptop',
+        'mouse',
+        'remote',
+        'keyboard',
+        'cell phone',
+        'microwave',
+        'oven',
+        'toaster',
+        'sink',
+        'refrigerator',
+        'book',
+        'clock',
+        'vase',
+        'scissors',
+        'teddy bear',
+        'hair drier',
+        'toothbrush',
+      ];
     }
   }
 
   List<Detection> detectObjects(img.Image image) {
-    if (!_isInitialized || _interpreter == null) {
+    if (!_isInitialized) {
       return [];
     }
 
+    try {
+      if (_useOnnx && _onnxSession != null) {
+        return _detectWithOnnx(image);
+      } else if (_tfliteInterpreter != null) {
+        return _detectWithTfLite(image);
+      }
+    } catch (e) {
+      print('Error during detection: $e');
+    }
+
+    return [];
+  }
+
+  List<Detection> _detectWithOnnx(img.Image image) {
+    try {
+      // Preprocess image for ONNX
+      final inputTensor = _preprocessImageForOnnx(image);
+
+      // Create input for ONNX model
+      final inputs = {
+        'images': OrtValueTensor.createTensorWithDataList(
+          inputTensor,
+          [1, 3, INPUT_SIZE, INPUT_SIZE], // ONNX typically uses CHW format
+        ),
+      };
+
+      // Run inference
+      final stopwatch = Stopwatch()..start();
+      final outputList = _onnxSession!.run(OrtRunOptions(), inputs);
+      stopwatch.stop();
+
+      print('ONNX inference time: ${stopwatch.elapsedMilliseconds}ms');
+
+      // Convert list to map format expected by _processOnnxOutputs
+      final outputs = <String, OrtValue>{};
+      for (int i = 0; i < outputList.length; i++) {
+        if (outputList[i] != null) {
+          outputs['output$i'] = outputList[i]!;
+        }
+      }
+
+      // Process outputs
+      final detections = _processOnnxOutputs(
+        outputs,
+        image.width,
+        image.height,
+      );
+
+      // Clean up
+      for (final input in inputs.values) {
+        input.release();
+      }
+      for (final output in outputs.values) {
+        output.release();
+      }
+
+      return detections;
+    } catch (e) {
+      print('Error in ONNX detection: $e');
+      return [];
+    }
+  }
+
+  List<Detection> _detectWithTfLite(img.Image image) {
     try {
       // Preprocess image
       final input = _preprocessImage(image);
@@ -82,17 +283,57 @@ class VideoDetector {
 
       // Run inference
       final stopwatch = Stopwatch()..start();
-      _interpreter!.runForMultipleInputs([input], outputs);
+      _tfliteInterpreter!.runForMultipleInputs([input], outputs);
       stopwatch.stop();
 
-      print('Inference time: ${stopwatch.elapsedMilliseconds}ms');
+      print(
+        'TensorFlow Lite inference time: ${stopwatch.elapsedMilliseconds}ms',
+      );
 
       // Post-process results
       return _postProcessOutputs(outputs, image.width, image.height);
     } catch (e) {
-      print('Error during detection: $e');
+      print('Error in TensorFlow Lite detection: $e');
       return [];
     }
+  }
+
+  List<double> _preprocessImageForOnnx(img.Image image) {
+    // Resize image to model input size
+    final resizedImage = img.copyResize(
+      image,
+      width: INPUT_SIZE,
+      height: INPUT_SIZE,
+    );
+
+    // Convert to Float32List with normalization in CHW format
+    final input = <double>[];
+
+    // Red channel
+    for (int y = 0; y < INPUT_SIZE; y++) {
+      for (int x = 0; x < INPUT_SIZE; x++) {
+        final pixel = resizedImage.getPixel(x, y);
+        input.add(pixel.r / 255.0);
+      }
+    }
+
+    // Green channel
+    for (int y = 0; y < INPUT_SIZE; y++) {
+      for (int x = 0; x < INPUT_SIZE; x++) {
+        final pixel = resizedImage.getPixel(x, y);
+        input.add(pixel.g / 255.0);
+      }
+    }
+
+    // Blue channel
+    for (int y = 0; y < INPUT_SIZE; y++) {
+      for (int x = 0; x < INPUT_SIZE; x++) {
+        final pixel = resizedImage.getPixel(x, y);
+        input.add(pixel.b / 255.0);
+      }
+    }
+
+    return input;
   }
 
   List _preprocessImage(img.Image image) {
@@ -124,6 +365,86 @@ class VideoDetector {
     }
 
     return input.reshape([1, INPUT_SIZE, INPUT_SIZE, 3]);
+  }
+
+  List<Detection> _processOnnxOutputs(
+    Map<String, OrtValue> outputs,
+    int imageWidth,
+    int imageHeight,
+  ) {
+    final detections = <Detection>[];
+
+    try {
+      // ONNX models typically output in different formats
+      // Adjust these keys based on your specific ONNX model
+      final outputData =
+          (outputs['output0'] ?? outputs.values.first) as OrtValueTensor;
+      final predictions = outputData.value as List<double>;
+
+      // Process predictions - adjust based on your model's output format
+      // Common format: [batch, num_detections, 85] where 85 = 4 (bbox) + 1 (confidence) + 80 (classes)
+      final numDetections =
+          predictions.length ~/ 85; // Adjust based on your model
+      final confidenceThreshold = 0.5;
+
+      for (int i = 0; i < numDetections; i++) {
+        final baseIndex = i * 85;
+
+        final centerX = predictions[baseIndex];
+        final centerY = predictions[baseIndex + 1];
+        final width = predictions[baseIndex + 2];
+        final height = predictions[baseIndex + 3];
+        final confidence = predictions[baseIndex + 4];
+
+        if (confidence > confidenceThreshold) {
+          // Find the class with highest probability
+          double maxClassProb = 0;
+          int classId = 0;
+
+          for (int j = 5; j < 85; j++) {
+            if (predictions[baseIndex + j] > maxClassProb) {
+              maxClassProb = predictions[baseIndex + j];
+              classId = j - 5;
+            }
+          }
+
+          // Convert to pixel coordinates
+          final left = ((centerX - width / 2) * imageWidth).clamp(
+            0.0,
+            imageWidth.toDouble(),
+          );
+          final top = ((centerY - height / 2) * imageHeight).clamp(
+            0.0,
+            imageHeight.toDouble(),
+          );
+          final right = ((centerX + width / 2) * imageWidth).clamp(
+            0.0,
+            imageWidth.toDouble(),
+          );
+          final bottom = ((centerY + height / 2) * imageHeight).clamp(
+            0.0,
+            imageHeight.toDouble(),
+          );
+
+          final className = classId < _labels.length
+              ? _labels[classId]
+              : 'Unknown';
+
+          detections.add(
+            Detection(
+              classId: classId,
+              className: className,
+              confidence: confidence * maxClassProb,
+              boundingBox: Rect.fromLTRB(left, top, right, bottom),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error processing ONNX outputs: $e');
+    }
+
+    return _applyNMS(detections);
   }
 
   Map<int, Object> _prepareOutputs() {
@@ -242,7 +563,8 @@ class VideoDetector {
   }
 
   void dispose() {
-    _interpreter?.close();
+    _tfliteInterpreter?.close();
+    _onnxSession?.release();
     _isInitialized = false;
   }
 }

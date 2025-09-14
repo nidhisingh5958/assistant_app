@@ -89,12 +89,17 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    # Embedding model (you provide this file)
+    # Embedding model 
     - assets/models/sentence_transformer.tflite
     - assets/models/distilgpt2.tflite
     # WordPiece vocab for tokenizer (you provide vocab.txt from the model)
     - assets/tokenizer/vocab.txt
     - assets/enc_files/
+    # Action detection models from model_oas repository
+    - assets/models/action_model.onnx
+    - assets/models/action_model_quantized.onnx
+    # Action class labels
+    - assets/labels/action_labels.txt
 
 dependency_overrides:
   tflite_flutter:

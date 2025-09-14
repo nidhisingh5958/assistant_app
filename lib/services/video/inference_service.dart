@@ -1,3 +1,5 @@
+// can serve as backup TFLite service
+
 import 'dart:ui';
 import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -75,6 +77,7 @@ class InferenceService {
         detections.add(
           Detection(
             classId: output[i].toInt(),
+            className: 'Unknown', // Add default class name
             confidence: output[i + 4],
             boundingBox: Rect.fromLTWH(
               output[i + 0],

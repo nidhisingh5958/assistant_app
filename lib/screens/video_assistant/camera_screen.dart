@@ -2,11 +2,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as imglib;
-import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
-import 'package:listen_iq/screens/video_assistant/widgets/detection_info_panel.dart';
+import 'package:listen_iq/screens/video_assistant/detection_screen.dart'
+    as detection_screen;
+import 'package:listen_iq/screens/video_assistant/widgets/detection_info_panel.dart'
+    as detection_widgets;
 import 'package:listen_iq/screens/video_assistant/widgets/detection_overlay.dart';
+import 'package:listen_iq/screens/video_assistant/widgets/action_info_panel.dart'
+    as action_widgets;
 import 'package:listen_iq/services/video/camera_service.dart';
 import 'package:listen_iq/services/video/models/video_detector.dart';
+import 'package:listen_iq/services/video/models/action_detector.dart'
+    as service_models;
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -20,14 +26,18 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   late CameraService _cameraService;
   late VideoDetector _videoDetector;
+  late service_models.ActionDetector _actionDetector;
 
-  DetectionResult? _lastResult;
+  detection_screen.DetectionResult? _lastResult;
   bool _isProcessing = false;
   bool _showInfo = true;
+  bool _showActions = true;
+  bool _actionDetectionEnabled = true;
   StreamSubscription? _imageSubscription;
 
   // Performance metrics
   double _avgInferenceTime = 0.0;
+  double _avgActionInferenceTime = 0.0;
   int _frameCount = 0;
   int _fps = 0;
   DateTime _lastFpsUpdate = DateTime.now();
@@ -37,13 +47,15 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     _cameraService = CameraService();
     _videoDetector = VideoDetector();
+    _actionDetector = service_models.ActionDetector();
     _initializeServices();
   }
 
   Future<void> _initializeServices() async {
     try {
-      // Initialize video detector
+      // Initialize detectors
       await _videoDetector.initialize();
+      await _actionDetector.initialize(useQuantisedModel: true);
 
       // Initialize camera
       await _cameraService.initializeCamera(widget.cameras);
@@ -86,8 +98,21 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      // Run detection
+      // Run object detection
       final detections = _videoDetector.detectObjects(convertedImage);
+
+      // Run action detection if enabled
+      List<detection_screen.ActionDetection> actionDetections = [];
+      if (_actionDetectionEnabled && _actionDetector.isInitialized) {
+        final actionStopwatch = Stopwatch()..start();
+        actionDetections = _actionDetector
+            .detectActions(convertedImage)
+            .cast<detection_screen.ActionDetection>();
+        actionStopwatch.stop();
+
+        // Update action inference time
+        _updateActionMetrics(actionStopwatch.elapsed);
+      }
 
       stopwatch.stop();
       final processingTime = stopwatch.elapsed;
@@ -98,8 +123,9 @@ class _CameraScreenState extends State<CameraScreen> {
       // Update UI with results
       if (mounted) {
         setState(() {
-          _lastResult = DetectionResult(
+          _lastResult = detection_screen.DetectionResult(
             detections: detections,
+            actionDetections: actionDetections,
             processingTime: processingTime,
             imageSize: Size(image.width.toDouble(), image.height.toDouble()),
             inferenceTime: processingTime,
@@ -181,6 +207,13 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  void _updateActionMetrics(Duration actionProcessingTime) {
+    _avgActionInferenceTime =
+        (_avgActionInferenceTime * (_frameCount - 1) +
+            actionProcessingTime.inMilliseconds) /
+        _frameCount;
+  }
+
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
@@ -209,8 +242,13 @@ class _CameraScreenState extends State<CameraScreen> {
               CircularProgressIndicator(),
               SizedBox(height: 16),
               Text(
-                'Initializing Camera & AI Model...',
+                'Initializing Camera & AI Models...',
                 style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Loading Action Detection Model...',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
             ],
           ),
@@ -253,13 +291,21 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
 
                 // Title
-                Text(
-                  'ListenIQ Vision',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Column(
+                  children: [
+                    Text(
+                      'ListenIQ Vision',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Object & Action Detection',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
                 ),
 
                 // Camera Switch Button
@@ -278,39 +324,123 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
+          // Action Detection Toggle
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 70,
+            left: 16,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _actionDetectionEnabled
+                    ? Colors.green.withOpacity(0.8)
+                    : Colors.grey.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _actionDetectionEnabled = !_actionDetectionEnabled;
+                    if (!_actionDetectionEnabled) {
+                      _actionDetector.clearFrameBuffer();
+                    }
+                  });
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _actionDetectionEnabled ? Icons.play_arrow : Icons.pause,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Actions',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Performance Indicators
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 70,
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_fps}fps',
+                    style: TextStyle(
+                      color: _fps > 15 ? Colors.green : Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (_actionDetectionEnabled) ...[
+                  SizedBox(height: 4),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'A: ${_avgActionInferenceTime.toInt()}ms',
+                      style: TextStyle(
+                        color: _avgActionInferenceTime < 100
+                            ? Colors.green
+                            : Colors.orange,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
           // Detection Info Panel
           if (_showInfo && _lastResult != null)
             Positioned(
-              bottom: 16,
+              bottom: _lastResult!.actionDetections.isNotEmpty && _showActions
+                  ? 120
+                  : 16,
               left: 16,
               right: 16,
-              child: DetectionInfoPanel(
+              child: detection_widgets.DetectionInfoPanel(
                 result: _lastResult!,
                 avgInferenceTime: _avgInferenceTime,
                 fps: _fps,
               ),
             ),
 
-          // Performance Indicator (Always visible)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 70,
-            right: 16,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${_fps}fps',
-                style: TextStyle(
-                  color: _fps > 15 ? Colors.green : Colors.orange,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
+          // Action Info Panel
+          if (_showActions && _lastResult?.actionDetections.isNotEmpty == true)
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: action_widgets.DetectionInfoPanel(
+                result: _lastResult!,
+                avgInferenceTime: _avgActionInferenceTime,
+                fps: _fps,
               ),
             ),
-          ),
         ],
       ),
     );
@@ -321,6 +451,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _imageSubscription?.cancel();
     _cameraService.dispose();
     _videoDetector.dispose();
+    _actionDetector.dispose();
     super.dispose();
   }
 }
