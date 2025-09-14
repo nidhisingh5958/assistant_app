@@ -45,7 +45,7 @@ dependencies:
   #  HTTP requests
   url_launcher: ^6.3.2
 
-  sqflite: ^2.4.2.    # SQLite for storing chat history
+  sqflite: ^2.4.2    # SQLite for storing chat history
   encrypt: ^5.0.3         # AES decryption helper
 
   # TensorFlow Lite for model inference
