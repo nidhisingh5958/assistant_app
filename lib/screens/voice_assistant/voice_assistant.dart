@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:flutter/material.dart';
-import 'package:listen_iq/screens/voice/components/3d_mesh.dart';
+import 'package:listen_iq/screens/voice_assistant/components/3d_mesh.dart';
 import 'package:listen_iq/services/file/crypto_service.dart';
 import 'package:listen_iq/services/file/embeddings.dart';
 import 'package:listen_iq/services/file/pipeline.dart';
