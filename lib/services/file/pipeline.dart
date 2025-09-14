@@ -1,4 +1,4 @@
-// services/pipeline.dart
+// A pipeline to process encrypted text files: decrypt, chunk, embed, and store in vector DB.
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'text_chunker.dart';

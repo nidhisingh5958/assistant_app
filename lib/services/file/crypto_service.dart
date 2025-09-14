@@ -1,3 +1,4 @@
+// A service to handle AES-GCM file encryption and decryption with key management.
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
@@ -68,41 +69,40 @@ class CryptoService {
   }
 
   /// Decrypt a file -> restore original
-Future<File> decryptFile(File encFile, {String? outputPath}) async {
-  final key = enc.Key(_keyBytes);
-  final content = await encFile.readAsBytes();
+  Future<File> decryptFile(File encFile, {String? outputPath}) async {
+    final key = enc.Key(_keyBytes);
+    final content = await encFile.readAsBytes();
 
-  if (content.length < 12 + 16) {
-    throw Exception("Invalid encrypted file: ${encFile.path}");
+    if (content.length < 12 + 16) {
+      throw Exception("Invalid encrypted file: ${encFile.path}");
+    }
+
+    // [IV (12 bytes)] + [Ciphertext+Tag]
+    final iv = enc.IV(content.sublist(0, 12));
+    final cipherAndTag = content.sublist(12);
+
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
+    final decrypted = encrypter.decryptBytes(
+      enc.Encrypted(cipherAndTag),
+      iv: iv,
+    );
+
+    final outPath = outputPath ?? p.setExtension(encFile.path, '.txt');
+    final outFile = File(outPath);
+
+    await outFile.writeAsBytes(decrypted, flush: true);
+
+    // Remove the encrypted file only if decryption succeeded
+    try {
+      await encFile.delete();
+      print("Deleted encrypted file: ${encFile.path}");
+    } catch (e) {
+      print("⚠️ Could not delete encrypted file: ${encFile.path} — $e");
+    }
+
+    print("File decrypted: ${outFile.path}");
+    return outFile;
   }
-
-  // [IV (12 bytes)] + [Ciphertext+Tag]
-  final iv = enc.IV(content.sublist(0, 12));
-  final cipherAndTag = content.sublist(12);
-
-  final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
-  final decrypted = encrypter.decryptBytes(
-    enc.Encrypted(cipherAndTag),
-    iv: iv,
-  );
-
-  final outPath = outputPath ?? p.setExtension(encFile.path, '.txt');
-  final outFile = File(outPath);
-
-  await outFile.writeAsBytes(decrypted, flush: true);
-
-  // Remove the encrypted file only if decryption succeeded
-  try {
-    await encFile.delete();
-    print("Deleted encrypted file: ${encFile.path}");
-  } catch (e) {
-    print("⚠️ Could not delete encrypted file: ${encFile.path} — $e");
-  }
-
-  print("File decrypted: ${outFile.path}");
-  return outFile;
-}
-
 
   /// Decrypt all `.enc` files in a directory
   Future<int> decryptDirectory(String dirPath) async {

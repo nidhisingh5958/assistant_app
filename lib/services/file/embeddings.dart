@@ -1,3 +1,4 @@
+// A service to generate text embeddings using a TensorFlow Lite model and a BERT tokenizer.
 import 'dart:math';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'tokenizer.dart';
@@ -14,32 +15,34 @@ class Embeddings {
   static Future<Embeddings> load({
     String modelAsset = 'assets/models/sentence_transformer.tflite',
     String vocabAsset = 'assets/tokenizer/vocab.txt',
-    int maxLen = 128, 
+    int maxLen = 128,
     int embedSize = 384,
   }) async {
     final interpreter = await Interpreter.fromAsset(modelAsset);
     final tokenizer = await BertTokenizer.fromAsset(vocabAsset);
-    
+
     // Print model info for debugging
     print("Model input details:");
     for (int i = 0; i < interpreter.getInputTensors().length; i++) {
       final tensor = interpreter.getInputTensor(i);
       print("  Input $i: ${tensor.shape}, type: ${tensor.type}");
     }
-    
+
     print("Model output details:");
     for (int i = 0; i < interpreter.getOutputTensors().length; i++) {
       final tensor = interpreter.getOutputTensor(i);
       print("  Output $i: ${tensor.shape}, type: ${tensor.type}");
     }
-    
+
     final embeddings = Embeddings._(interpreter, tokenizer, maxLen, embedSize);
-    
+
     // all-MiniLM-L6-v2 uses the same vocab as BERT but we need to be more careful
     // The model actually uses vocab size 30522 (standard BERT vocab)
     embeddings._modelVocabSize = 30522;
-    print("all-MiniLM-L6-v2 model vocabulary size: ${embeddings._modelVocabSize}");
-    
+    print(
+      "all-MiniLM-L6-v2 model vocabulary size: ${embeddings._modelVocabSize}",
+    );
+
     return embeddings;
   }
 
@@ -47,13 +50,13 @@ class Embeddings {
     try {
       // Process one text at a time for all-MiniLM-L6-v2 stability
       List<List<double>> allEmbeddings = [];
-      
+
       for (int i = 0; i < texts.length; i++) {
         print("Processing text ${i + 1}/${texts.length}");
         final embedding = _embedSingle(texts[i]);
         allEmbeddings.add(embedding);
       }
-      
+
       return allEmbeddings;
     } catch (e, stackTrace) {
       print("Error in embedTexts: $e");
@@ -64,7 +67,9 @@ class Embeddings {
 
   List<double> _embedSingle(String text) {
     try {
-      print("Processing text: '${text.length > 50 ? text.substring(0, 50) + '...' : text}'");
+      print(
+        "Processing text: '${text.length > 50 ? text.substring(0, 50) + '...' : text}'",
+      );
 
       // Tokenize the text
       final tokens = tokenizer.encode(text, maxLen: maxLen);
@@ -82,7 +87,9 @@ class Embeddings {
       // Verify token validity
       final minToken = validTokens.reduce((a, b) => a < b ? a : b);
       final maxToken = validTokens.reduce((a, b) => a > b ? a : b);
-      print("Token range: min=$minToken, max=$maxToken (vocab size: $_modelVocabSize)");
+      print(
+        "Token range: min=$minToken, max=$maxToken (vocab size: $_modelVocabSize)",
+      );
 
       if (maxToken >= _modelVocabSize || minToken < 0) {
         throw Exception("Invalid tokens detected even after cleaning");
@@ -113,7 +120,7 @@ class Embeddings {
     } catch (e, stackTrace) {
       print("TensorFlow Lite inference failed: $e");
       print("Stack trace: $stackTrace");
-      
+
       // Return zero embedding as fallback
       print("Returning zero embedding as fallback");
       return List<double>.filled(embedSize, 0.0);
