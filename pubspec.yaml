@@ -29,24 +29,38 @@ dependencies:
   flutter:
     sdk: flutter
   go_router: ^16.2.0
-  lucide_icons_flutter: ^3.0.9
+  
   # Requesting runtime permissions
   permission_handler: ^12.0.1
+
   # Capturing audio levels (cross-platform) via amplitude stream
   speech_to_text: ^7.3.0
-  path_provider: ^2.1.5
   avatar_glow: ^3.0.1
+
+  # Utilities
   path: ^1.9.1
-  sqflite: ^2.4.2
+  path_provider: ^2.1.5
+  flutter_launcher_icons: ^0.14.4
+
+  #  HTTP requests
+  url_launcher: ^6.3.2
+
+  sqflite: ^2.4.2.    # SQLite for storing chat history
   encrypt: ^5.0.3         # AES decryption helper
+
+   # TensorFlow Lite for model inference
   tflite_flutter: ^0.11.0  # TFLite inference
+
   collection: ^1.19.1
   huggingface_dart: ^0.0.2
   flutter_tts: ^4.2.3
   tiktoken: ^1.0.3
-  flutter_launcher_icons: ^0.14.4
-  url_launcher: ^6.3.2
+  
   shared_preferences: ^2.5.3
+
+  # Camera and image processing
+  camera: ^0.11.2
+  image: ^4.5.4
   
 dev_dependencies:
   flutter_test:

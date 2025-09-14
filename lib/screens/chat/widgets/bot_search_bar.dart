@@ -104,7 +104,7 @@ class _BotSearchBarState extends State<BotSearchBar> {
                 decoration: InputDecoration(
                   hintText: _isProcessing
                       ? "Processing your question..."
-                      : "Ask me about cconversations, memories...",
+                      : "Ask me about conversations, memories...",
                   hintStyle: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 20,
