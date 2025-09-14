@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:listen_iq/screens/components/appbar.dart';
-import 'package:listen_iq/services/router_constants.dart';
+import 'package:listen_iq/utilities/router_constants.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});

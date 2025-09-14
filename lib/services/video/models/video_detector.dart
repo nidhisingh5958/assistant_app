@@ -111,10 +111,10 @@ class VideoDetector {
       for (int x = 0; x < INPUT_SIZE; x++) {
         final pixel = resizedImage.getPixel(x, y);
 
-        // Extract RGB components from the pixel int value
-        final r = (pixel >> 16) & 0xFF;
-        final g = (pixel >> 8) & 0xFF;
-        final b = pixel & 0xFF;
+        // Extract RGB components from the Pixel object
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
 
         // Normalize pixel values to [0, 1] or [-1, 1] based on your model
         input[pixelIndex++] = r / 255.0;

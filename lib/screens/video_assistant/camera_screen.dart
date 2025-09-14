@@ -132,7 +132,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final int uvRowStride = cameraImage.planes[1].bytesPerRow;
     final int uvPixelStride = cameraImage.planes[1].bytesPerPixel!;
 
-    final image = imglib.Image(width, height);
+    final image = imglib.Image(width: width, height: height);
 
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
@@ -150,7 +150,7 @@ class _CameraScreenState extends State<CameraScreen> {
             .clamp(0, 255);
         int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
-        image.setPixel(x, y, imglib.getColor(r, g, b));
+        image.setPixel(x, y, imglib.ColorRgb8(r, g, b));
       }
     }
     return image;
@@ -159,10 +159,10 @@ class _CameraScreenState extends State<CameraScreen> {
   imglib.Image _convertBGRA8888ToImage(CameraImage cameraImage) {
     final plane = cameraImage.planes[0];
     return imglib.Image.fromBytes(
-      cameraImage.width,
-      cameraImage.height,
-      plane.bytes,
-      format: imglib.Format.bgra,
+      width: cameraImage.width,
+      height: cameraImage.height,
+      bytes: plane.bytes.buffer,
+      format: imglib.Format.uint8,
     );
   }
 

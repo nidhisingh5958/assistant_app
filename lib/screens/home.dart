@@ -4,7 +4,7 @@ import 'package:listen_iq/screens/components/colors.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:listen_iq/screens/components/sidemenu.dart';
-import 'package:listen_iq/services/router_constants.dart';
+import 'package:listen_iq/utilities/router_constants.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -254,7 +254,7 @@ class _HomePageState extends State<HomeScreen> with TickerProviderStateMixin {
                           'AI video\nservice',
                           Icons.image_outlined,
                           onTap: () {
-                            // context.goNamed(RouteConstants.videoAssistant);
+                            context.goNamed(RouteConstants.videoAssistant);
                           },
                         ),
                         const SizedBox(width: 12),

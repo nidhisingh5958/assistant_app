@@ -47,11 +47,11 @@ class InferenceService {
             var pixel = resizedImage.getPixel(j, k);
             switch (l) {
               case 0:
-                return ((pixel >> 16) & 0xFF) / 255.0; // Red
+                return pixel.r / 255.0; // Red
               case 1:
-                return ((pixel >> 8) & 0xFF) / 255.0; // Green
+                return pixel.g / 255.0; // Green
               case 2:
-                return (pixel & 0xFF) / 255.0; // Blue
+                return pixel.b / 255.0; // Blue
               default:
                 return 0.0;
             }

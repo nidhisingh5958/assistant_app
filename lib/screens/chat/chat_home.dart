@@ -6,7 +6,7 @@ import 'package:listen_iq/screens/components/sidemenu.dart';
 import 'package:listen_iq/screens/chat/entities/message_bot.dart';
 import 'package:listen_iq/screens/chat/entities/message_group.dart';
 import 'package:listen_iq/screens/chat/widgets/chat_message_widget.dart';
-import '../../services/router_constants.dart';
+import '../../utilities/router_constants.dart';
 
 class ChatHome extends StatefulWidget {
   const ChatHome({super.key});

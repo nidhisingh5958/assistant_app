@@ -88,7 +88,7 @@ class CameraService extends ChangeNotifier {
     final uBuffer = cameraImage.planes[1].bytes;
     final vBuffer = cameraImage.planes[2].bytes;
 
-    final image = img.Image(width, height);
+    final image = img.Image(width: width, height: height);
 
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
@@ -106,7 +106,7 @@ class CameraService extends ChangeNotifier {
             .toInt();
         final b = (yValue + 2.03211 * (uValue - 128)).clamp(0, 255).toInt();
 
-        image.setPixel(x, y, img.getColor(r, g, b));
+        image.setPixel(x, y, img.ColorRgb8(r, g, b));
       }
     }
 
@@ -118,7 +118,7 @@ class CameraService extends ChangeNotifier {
     final height = cameraImage.height;
     final bytes = cameraImage.planes[0].bytes;
 
-    final image = img.Image(width, height);
+    final image = img.Image(width: width, height: height);
 
     for (int i = 0; i < bytes.length; i += 4) {
       final b = bytes[i];
@@ -129,7 +129,7 @@ class CameraService extends ChangeNotifier {
       final x = (i ~/ 4) % width;
       final y = (i ~/ 4) ~/ width;
 
-      image.setPixel(x, y, img.getColor(r, g, b));
+      image.setPixel(x, y, img.ColorRgb8(r, g, b));
     }
 
     return image;

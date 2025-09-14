@@ -40,12 +40,12 @@ dependencies:
   # Utilities
   path: ^1.9.1
   path_provider: ^2.1.5
-  flutter_launcher_icons: ^0.11.0
+  flutter_launcher_icons: ^0.14.4
 
   #  HTTP requests
   url_launcher: ^6.3.2
 
-  sqflite: ^2.4.2
+  sqflite: ^2.4.2.    # SQLite for storing chat history
   encrypt: ^5.0.3         # AES decryption helper
 
    # TensorFlow Lite for model inference
@@ -59,8 +59,8 @@ dependencies:
   shared_preferences: ^2.5.3
 
   # Camera and image processing
-  camera: ^0.10.4
-  image: ^3.3.0
+  camera: ^0.11.2
+  image: ^4.5.4
   
 dev_dependencies:
   flutter_test:
