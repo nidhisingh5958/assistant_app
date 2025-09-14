@@ -6,7 +6,7 @@ import 'package:listen_iq/screens/settings/contact_us.dart';
 import 'package:listen_iq/screens/settings/terms_and_conditions.dart';
 import 'package:listen_iq/screens/history.dart';
 import 'package:listen_iq/screens/home.dart';
-import 'package:listen_iq/screens/voice_assistant/voice_assistant.dart';
+import 'package:listen_iq/screens/voice/voice_assistant.dart';
 import 'package:listen_iq/services/router_constants.dart';
 
 final GoRouter router = GoRouter(
