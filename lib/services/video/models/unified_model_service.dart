@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
@@ -138,9 +136,21 @@ class UnifiedVideoAnalysisService {
   }
 
   Future<void> _initializeActionModel() async {
-    final modelPath = _useQuantisedAction
-        ? ACTION_MODEL_QUANTISED_PATH
-        : ACTION_MODEL_PATH;
+    String modelPath;
+
+    if (_useQuantisedAction) {
+      // Try quantized model first, fallback to regular model
+      try {
+        await rootBundle.load(ACTION_MODEL_QUANTISED_PATH);
+        modelPath = ACTION_MODEL_QUANTISED_PATH;
+      } catch (e) {
+        print('Quantized model not found, using regular model');
+        modelPath = ACTION_MODEL_PATH;
+        _useQuantisedAction = false;
+      }
+    } else {
+      modelPath = ACTION_MODEL_PATH;
+    }
 
     final modelAsset = await rootBundle.load(modelPath);
     final modelBytes = modelAsset.buffer.asUint8List();
@@ -153,7 +163,7 @@ class UnifiedVideoAnalysisService {
     _actionInputNames = _actionSession!.inputNames;
     _actionInputShapes = [
       [1, SEQUENCE_LENGTH, 3, ACTION_INPUT_SIZE, ACTION_INPUT_SIZE],
-    ]; // Default action model input shape
+    ];
   }
 
   Future<void> _initializeFusionModel() async {

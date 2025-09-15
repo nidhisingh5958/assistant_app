@@ -51,52 +51,90 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initializeServices() async {
     try {
-      // Step 1: Initialize Unified Analysis Service
+      // Add a small delay to ensure everything is ready
+      await Future.delayed(Duration(milliseconds: 500));
+
       setState(() {
-        _initializationStatus = 'Initializing AI models...';
+        _initializationStatus = 'Preparing camera system...';
+      });
+
+      // Step 1: Initialize AI models first (they're working fine)
+      setState(() {
+        _initializationStatus = 'Loading AI models...';
       });
 
       await _analysisService.initialize(useQuantisedAction: true);
       _analysisServiceInitialized = _analysisService.isInitialized;
 
-      print('Analysis service initialized: $_analysisServiceInitialized');
+      print('✅ Analysis service initialized: $_analysisServiceInitialized');
 
       if (!_analysisServiceInitialized) {
         throw Exception('Failed to initialize analysis service');
       }
 
-      // Step 2: Initialize Camera
+      // Step 2: Wait a moment before camera initialization
+      await Future.delayed(Duration(milliseconds: 300));
+
+      // Step 3: Initialize Camera with detailed error handling
       setState(() {
-        _initializationStatus = 'Initializing camera...';
+        _initializationStatus = 'Connecting to camera...';
       });
 
-      await _cameraService.initializeCamera(widget.cameras);
-      _cameraInitialized = _cameraService.isInitialized;
+      try {
+        await _cameraService.initializeCamera(widget.cameras);
+        _cameraInitialized = _cameraService.isInitialized;
 
-      print('Camera initialized: $_cameraInitialized');
+        print('✅ Camera initialized: $_cameraInitialized');
+      } catch (e) {
+        print('❌ Camera initialization error details: $e');
 
-      if (!_cameraInitialized) {
-        throw Exception('Failed to initialize camera');
+        // Try to provide specific error messages
+        String userFriendlyError;
+        if (e.toString().contains('permission')) {
+          userFriendlyError =
+              'Camera permission required. Please enable camera access in settings.';
+        } else if (e.toString().contains('timeout')) {
+          userFriendlyError =
+              'Camera initialization timed out. Try restarting the app.';
+        } else if (e.toString().contains('CameraAccessDenied')) {
+          userFriendlyError =
+              'Camera access denied. Please check app permissions.';
+        } else {
+          userFriendlyError = 'Camera failed to start: ${e.toString()}';
+        }
+
+        setState(() {
+          _initializationStatus = 'Camera Error: $userFriendlyError';
+        });
+
+        // Show error but don't throw - let user retry
+        _showErrorDialog('Camera Initialization Failed', userFriendlyError);
+        return; // Don't proceed to next steps
       }
 
-      // Step 3: Start processing
+      if (!_cameraInitialized) {
+        throw Exception('Camera service reports not initialized');
+      }
+
+      // Step 4: Start processing only if both are ready
       if (_cameraInitialized && _analysisServiceInitialized) {
         setState(() {
           _initializationStatus = 'Starting video analysis...';
         });
 
+        await Future.delayed(Duration(milliseconds: 200));
         _startImageProcessing();
 
         setState(() {
           _initializationStatus = 'Ready!';
         });
 
-        print('All services initialized successfully');
+        print('✅ All services initialized successfully');
       }
     } catch (e) {
-      print('Critical initialization error: $e');
+      print('❌ Critical initialization error: $e');
       setState(() {
-        _initializationStatus = 'Error: ${e.toString()}';
+        _initializationStatus = 'Initialization failed: ${e.toString()}';
       });
       _showErrorDialog('Initialization Error', e.toString());
     }
