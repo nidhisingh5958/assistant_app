@@ -8,6 +8,7 @@ import 'package:listen_iq/screens/history.dart';
 import 'package:listen_iq/screens/home.dart';
 import 'package:listen_iq/screens/video_assistant/camera_screen.dart';
 import 'package:listen_iq/screens/voice_assistant/voice_assistant.dart';
+import 'package:listen_iq/utilities/app_initialization.dart';
 import 'package:listen_iq/utilities/router_constants.dart';
 
 final GoRouter router = GoRouter(
@@ -31,7 +32,7 @@ final GoRouter router = GoRouter(
           path: '/videoAssistant',
           name: RouteConstants.videoAssistant,
           builder: (BuildContext context, GoRouterState state) {
-            return CameraScreen(cameras: []);
+            return CameraScreen(cameras: AppInitialization.cameras ?? []);
           },
         ),
         GoRoute(

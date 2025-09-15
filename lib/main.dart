@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:listen_iq/utilities/app_initialization.dart';
 import 'package:listen_iq/utilities/router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // cameras = await availableCameras();
+  await AppInitialization.initialize();
   runApp(MyApp());
 }
 

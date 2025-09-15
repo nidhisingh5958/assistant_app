@@ -184,7 +184,10 @@ class UnifiedVideoAnalysisService {
     ]; // Default fusion model input shapes
   }
 
-  Future<UnifiedAnalysisResult> analyzeFrame(img.Image frame) async {
+  Future<UnifiedAnalysisResult> analyzeFrame(
+    img.Image frame,
+    img.Image resizedForAction,
+  ) async {
     if (!_isInitialized) {
       throw Exception('Service not initialized');
     }
@@ -945,40 +948,30 @@ class UnifiedVideoAnalysisService {
   }
 
   List<double> _extractTemporalFeatures() {
-    // Extract temporal context from previous detections
     final features = <double>[];
 
-    // Object consistency over time
+    // Object frequency over last detections
     final objectCounts = <int, int>{};
     for (final obj in _lastObjectDetections) {
       objectCounts[obj.classId] = (objectCounts[obj.classId] ?? 0) + 1;
     }
 
-    // Action consistency over time
-    final actionCounts = <int, int>{};
-    for (final action in _lastActionDetections) {
-      actionCounts[action.actionId] = (actionCounts[action.actionId] ?? 0) + 1;
+    // Encode normalized object counts (top 10 classes)
+    for (int i = 0; i < 10; i++) {
+      features.add((objectCounts[i] ?? 0) / 10.0);
     }
 
-    // Create feature vector (simplified)
-    features.add(
-      _lastObjectDetections.length / 10.0,
-    ); // Normalized object count
-    features.add(_lastActionDetections.length / 5.0); // Normalized action count
+    // Action frequency over last detections
+    final actionCounts = <int, int>{};
+    for (final act in _lastActionDetections) {
+      actionCounts[act.actionId] = (actionCounts[act.actionId] ?? 0) + 1;
+    }
 
-    // Add stability metrics
-    features.add(
-      objectCounts.isNotEmpty
-          ? objectCounts.values.reduce(math.max) / 10.0
-          : 0.0,
-    );
-    features.add(
-      actionCounts.isNotEmpty
-          ? actionCounts.values.reduce(math.max) / 5.0
-          : 0.0,
-    );
+    for (int i = 0; i < 5; i++) {
+      features.add((actionCounts[i] ?? 0) / 5.0);
+    }
 
-    // Pad to expected size
+    // Pad or truncate to match fusion model requirement (example: 32 features)
     while (features.length < 32) {
       features.add(0.0);
     }

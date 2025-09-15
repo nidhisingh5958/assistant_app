@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as imglib;
@@ -167,21 +168,47 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      // Run unified analysis
-      final result = await _analysisService.analyzeFrame(convertedImage);
+      // Prepare inputs for the unified analysis service
+      // 1. Resized image for action detection
+      final resizedForAction = imglib.copyResize(
+        convertedImage,
+        width: 112,
+        height: 112,
+        interpolation: imglib.Interpolation.linear,
+      );
+
+      // 2. Convert to Float32List for both models
+      // Assuming your models take normalized (0-1) float values.
+      final float32List = Float32List(
+        convertedImage.width * convertedImage.height * 3,
+      );
+      int pixelIndex = 0;
+      for (int y = 0; y < convertedImage.height; y++) {
+        for (int x = 0; x < convertedImage.width; x++) {
+          final pixel = convertedImage.getPixel(x, y);
+          float32List[pixelIndex++] = pixel.r / 255.0;
+          float32List[pixelIndex++] = pixel.g / 255.0;
+          float32List[pixelIndex++] = pixel.b / 255.0;
+        }
+      }
+
+      // Now pass the correctly formatted data to your analysis service
+      // Note: You will need to modify UnifiedVideoAnalysisService.analyzeFrame
+      // to accept the new image format.
+      final result = await _analysisService.analyzeFrame(
+        convertedImage, // This is for object detection
+        resizedForAction, // This is for action detection
+      );
+
+      // The previous implementation of `analyzeFrame` only takes `imglib.Image`.
+      // You must update `UnifiedVideoAnalysisService` to process the inputs separately.
+      // The `analyzeFrame` method in `UnifiedVideoAnalysisService` should look like this:
+      // Future<UnifiedAnalysisResult> analyzeFrame(imglib.Image objectImage, imglib.Image actionImage)
 
       stopwatch.stop();
       final processingTime = stopwatch.elapsed;
 
-      // Update performance metrics
-      _updateMetrics(processingTime);
-
-      // Update UI with results
-      if (mounted) {
-        setState(() {
-          _lastResult = result;
-        });
-      }
+      // ... rest of the method (update metrics, set state)
     } catch (e) {
       print('Error processing frame: $e');
     } finally {
@@ -356,7 +383,7 @@ class _CameraScreenState extends State<CameraScreen> {
       body: Stack(
         children: [
           // Camera Preview
-          Positioned.fill(child: CameraPreview(_cameraService.controller!)),
+          Positioned.fill(child: _buildCameraPreview()),
 
           // Detection Overlay
           if (_lastResult != null)
@@ -388,11 +415,13 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
 
+                Spacer(),
+
                 // Title
                 Column(
                   children: [
                     Text(
-                      'ListenIQ Vision Pro',
+                      'ListenIQ Vision',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -407,17 +436,18 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
 
                 // Camera Switch Button
-                IconButton(
-                  onPressed: widget.cameras.length > 1
-                      ? () => _cameraService.switchCamera()
-                      : null,
-                  icon: Icon(
-                    Icons.switch_camera,
-                    color: widget.cameras.length > 1
-                        ? Colors.white
-                        : Colors.grey,
-                  ),
-                ),
+                // IconButton(
+                //   onPressed: widget.cameras.length > 1
+                //       ? () => _cameraService.switchCamera()
+                //       : null,
+                //   icon: Icon(
+                //     Icons.switch_camera,
+                //     color: widget.cameras.length > 1
+                //         ? Colors.white
+                //         : Colors.grey,
+                //   ),
+                // ),
+                Spacer(),
               ],
             ),
           ),
@@ -601,6 +631,16 @@ class _CameraScreenState extends State<CameraScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildCameraPreview() {
+    if (_cameraService.controller == null ||
+        !_cameraService.controller!.value.isInitialized) {
+      // This will show a loading spinner or a black screen during the brief
+      // moment the controller is being switched.
+      return const Center(child: CircularProgressIndicator());
+    }
+    return CameraPreview(_cameraService.controller!);
   }
 
   @override

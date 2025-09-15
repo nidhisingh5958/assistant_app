@@ -312,6 +312,9 @@ class CameraService {
     try {
       print('🔄 Switching camera...');
       stopImageStream();
+      await _cleanup();
+      _controller =
+          null; // 👈 Add this line to immediately clear the reference.
 
       _currentCameraIndex = (_currentCameraIndex + 1) % _cameras.length;
       print(
