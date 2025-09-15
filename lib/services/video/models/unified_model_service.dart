@@ -131,8 +131,10 @@ class UnifiedVideoAnalysisService {
       ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
 
     _objectSession = OrtSession.fromBuffer(modelBytes, sessionOptions);
-    _objectInputNames = _objectSession!.getInputNames();
-    _objectInputShapes = _objectSession!.getInputShapes();
+    _objectInputNames = _objectSession!.inputNames;
+    _objectInputShapes = [
+      [1, 3, OBJECT_INPUT_SIZE, OBJECT_INPUT_SIZE],
+    ]; // Default YOLO input shape
   }
 
   Future<void> _initializeActionModel() async {
@@ -148,8 +150,10 @@ class UnifiedVideoAnalysisService {
       ..setIntraOpNumThreads(1);
 
     _actionSession = OrtSession.fromBuffer(modelBytes, sessionOptions);
-    _actionInputNames = _actionSession!.getInputNames();
-    _actionInputShapes = _actionSession!.getInputShapes();
+    _actionInputNames = _actionSession!.inputNames;
+    _actionInputShapes = [
+      [1, SEQUENCE_LENGTH, 3, ACTION_INPUT_SIZE, ACTION_INPUT_SIZE],
+    ]; // Default action model input shape
   }
 
   Future<void> _initializeFusionModel() async {
@@ -161,8 +165,13 @@ class UnifiedVideoAnalysisService {
       ..setIntraOpNumThreads(2);
 
     _fusionSession = OrtSession.fromBuffer(modelBytes, sessionOptions);
-    _fusionInputNames = _fusionSession!.getInputNames();
-    _fusionInputShapes = _fusionSession!.getInputShapes();
+    _fusionInputNames = _fusionSession!.inputNames;
+    _fusionInputShapes = [
+      [1, 256],
+      [1, 80],
+      [1, 15],
+      [1, 32],
+    ]; // Default fusion model input shapes
   }
 
   Future<UnifiedAnalysisResult> analyzeFrame(img.Image frame) async {

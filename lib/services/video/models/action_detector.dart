@@ -140,15 +140,11 @@ class ActionDetector {
       _session = OrtSession.fromBuffer(modelBytes, sessionOptions);
 
       // Get model metadata
-      _inputNames = _session!.getInputNames();
-      _inputShapes = _session!.getInputShapes();
-      _outputNames = _session!.getOutputNames();
-      _outputShapes = _session!.getOutputShapes();
+      _inputNames = _session!.inputNames;
+      _outputNames = _session!.outputNames;
 
       print('Model inputs: $_inputNames');
-      print('Input shapes: $_inputShapes');
       print('Model outputs: $_outputNames');
-      print('Output shapes: $_outputShapes');
     } catch (e) {
       print('Failed to load ONNX model: $e');
       throw Exception('Failed to load action detection model: $e');

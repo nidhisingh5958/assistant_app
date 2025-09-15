@@ -8,7 +8,7 @@ import 'package:listen_iq/screens/video_assistant/widgets/detection_info_panel.d
 import 'package:listen_iq/screens/video_assistant/widgets/detection_overlay.dart';
 import 'package:listen_iq/screens/video_assistant/widgets/action_info_panel.dart';
 import 'package:listen_iq/services/video/camera_service.dart';
-import 'package:listen_iq/services/video/models/unified_video_analysis_service.dart';
+import 'package:listen_iq/services/video/models/unified_model_service.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;

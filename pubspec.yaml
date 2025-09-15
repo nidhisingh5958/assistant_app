@@ -97,7 +97,7 @@ flutter:
     - assets/enc_files/
     # Action detection models from model_oas repository
     - assets/models/action_model.onnx          # Action recognition (full precision)
-    - assets/models/action_model_quantised.onnx      # Action recognition (quantized)
+    - assets/models/action_model_quantized.onnx      # Action recognition (quantized)
     - assets/models/yolov8s-oiv7.onnx          # Object detection
     - assets/models/fusion_model_live.onnx     # Context fusion model
     # Action class labels

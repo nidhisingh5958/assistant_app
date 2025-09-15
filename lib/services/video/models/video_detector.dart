@@ -16,9 +16,7 @@ class VideoDetector {
   // ONNX Runtime components
   OrtSession? _session;
   late List<String> _inputNames;
-  late List<List<int>> _inputShapes;
   late List<String> _outputNames;
-  late List<List<int>> _outputShapes;
 
   List<String> _labels = [];
   bool _isInitialized = false;
@@ -44,12 +42,10 @@ class VideoDetector {
       _isInitialized = true;
       print('Video detection model initialized successfully with YOLOv8 ONNX');
       print('Model inputs: $_inputNames');
-      print('Input shapes: $_inputShapes');
       print('Model outputs: $_outputNames');
-      print('Output shapes: $_outputShapes');
       print('Loaded ${_labels.length} object classes');
     } catch (e) {
-      print('Error initializing video detector: $e');
+      print('Error initializing video detection model: $e');
       _isInitialized = false;
       rethrow;
     }
@@ -70,14 +66,9 @@ class VideoDetector {
       _session = OrtSession.fromBuffer(modelBytes, sessionOptions);
 
       // Get model metadata
-      _inputNames = _session!.getInputNames();
-      _inputShapes = _session!.getInputShapes();
-      _outputNames = _session!.getOutputNames();
-      _outputShapes = _session!.getOutputShapes();
-
-      print('YOLOv8 model loaded successfully');
+      _inputNames = _session!.inputNames;
+      _outputNames = _session!.outputNames;
     } catch (e) {
-      print('Failed to load YOLOv8 ONNX model: $e');
       throw Exception('Failed to load YOLOv8 model: $e');
     }
   }
