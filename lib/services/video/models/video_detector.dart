@@ -5,107 +5,80 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
-import 'package:path/path.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as img;
 
 class VideoDetector {
-  static const String TFLITE_MODEL_PATH =
-      'assets/models/video_detection_model.tflite';
-  static const String ONNX_MODEL_PATH =
-      'assets/models/object_detection_model.onnx';
-  static const String LABELS_PATH = 'assets/labels/labels.txt';
-  static const int INPUT_SIZE = 640; // Adjust based on your model
+  static const String YOLO_MODEL_PATH = 'assets/models/yolov8s-oiv7.onnx';
+  static const String LABELS_PATH = 'assets/labels/oiv7_labels.txt';
+  static const int INPUT_SIZE = 640; // YOLOv8 standard input size
 
-  // TensorFlow Lite components (fallback)
-  Interpreter? _tfliteInterpreter;
-
-  // ONNX Runtime components (preferred)
-  OrtSession? _onnxSession;
+  // ONNX Runtime components
+  OrtSession? _session;
+  late List<String> _inputNames;
+  late List<List<int>> _inputShapes;
+  late List<String> _outputNames;
+  late List<List<int>> _outputShapes;
 
   List<String> _labels = [];
   bool _isInitialized = false;
-  bool _useOnnx = false;
 
-  // Model input/output shapes - adjust based on your model
-  late List<List<int>> _inputShapes;
-  late List<List<int>> _outputShapes;
+  // Detection parameters
+  static const double CONFIDENCE_THRESHOLD = 0.5;
+  static const double NMS_THRESHOLD = 0.4;
+  static const int MAX_DETECTIONS = 100;
 
   bool get isInitialized => _isInitialized;
-  bool get isUsingOnnx => _useOnnx;
+  bool get isUsingOnnx => true; // Always using ONNX now
 
   Future<void> initialize({bool preferOnnx = true}) async {
     try {
-      if (preferOnnx) {
-        // Try to initialize ONNX first
-        final success = await _initializeOnnx();
-        if (success) {
-          _useOnnx = true;
-          _isInitialized = true;
-          print('Video detection model initialized with ONNX Runtime');
-        } else {
-          // Fallback to TensorFlow Lite
-          await _initializeTfLite();
-        }
-      } else {
-        // Use TensorFlow Lite directly
-        await _initializeTfLite();
-      }
+      print('Initializing YOLOv8 ONNX model...');
+
+      // Load ONNX model
+      await _loadOnnxModel();
 
       // Load labels
       await _loadLabels();
 
-      if (_isInitialized) {
-        print('Video detection model initialized successfully');
-        print('Using ${_useOnnx ? 'ONNX Runtime' : 'TensorFlow Lite'}');
-        print('Input shapes: ${_useOnnx ? 'ONNX format' : _inputShapes}');
-      }
+      _isInitialized = true;
+      print('Video detection model initialized successfully with YOLOv8 ONNX');
+      print('Model inputs: $_inputNames');
+      print('Input shapes: $_inputShapes');
+      print('Model outputs: $_outputNames');
+      print('Output shapes: $_outputShapes');
+      print('Loaded ${_labels.length} object classes');
     } catch (e) {
       print('Error initializing video detector: $e');
       _isInitialized = false;
+      rethrow;
     }
   }
 
-  Future<bool> _initializeOnnx() async {
+  Future<void> _loadOnnxModel() async {
     try {
-      // Load the ONNX model
-      final modelBytes = await rootBundle.load(ONNX_MODEL_PATH);
+      // Load the YOLOv8 ONNX model
+      final modelAsset = await rootBundle.load(YOLO_MODEL_PATH);
+      final modelBytes = modelAsset.buffer.asUint8List();
 
-      // Create ONNX Runtime session
-      _onnxSession = OrtSession.fromBuffer(
-        modelBytes.buffer.asUint8List(),
-        OrtSessionOptions(),
-      );
+      // Create ONNX Runtime session with optimization
+      final sessionOptions = OrtSessionOptions()
+        ..setInterOpNumThreads(1)
+        ..setIntraOpNumThreads(1)
+        ..setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
 
-      return true;
+      _session = OrtSession.fromBuffer(modelBytes, sessionOptions);
+
+      // Get model metadata
+      _inputNames = _session!.getInputNames();
+      _inputShapes = _session!.getInputShapes();
+      _outputNames = _session!.getOutputNames();
+      _outputShapes = _session!.getOutputShapes();
+
+      print('YOLOv8 model loaded successfully');
     } catch (e) {
-      print('Failed to initialize ONNX model: $e');
-      return false;
-    }
-  }
-
-  Future<void> _initializeTfLite() async {
-    try {
-      // Load the TFLite model
-      _tfliteInterpreter = await Interpreter.fromAsset(TFLITE_MODEL_PATH);
-
-      // Get input and output shapes
-      _inputShapes = _tfliteInterpreter!
-          .getInputTensors()
-          .map((tensor) => tensor.shape)
-          .toList();
-      _outputShapes = _tfliteInterpreter!
-          .getOutputTensors()
-          .map((tensor) => tensor.shape)
-          .toList();
-
-      _useOnnx = false;
-      _isInitialized = true;
-      print('Video detection model initialized with TensorFlow Lite');
-    } catch (e) {
-      print('Failed to initialize TensorFlow Lite model: $e');
-      _isInitialized = false;
+      print('Failed to load YOLOv8 ONNX model: $e');
+      throw Exception('Failed to load YOLOv8 model: $e');
     }
   }
 
@@ -115,11 +88,13 @@ class VideoDetector {
       _labels = labelsData
           .split('\n')
           .where((label) => label.trim().isNotEmpty)
+          .map((label) => label.trim())
           .toList();
-      print('Loaded ${_labels.length} labels');
+      print('Loaded ${_labels.length} OIv7 labels from file');
     } catch (e) {
-      print('Error loading labels: $e');
-      // Fallback labels - Common COCO dataset labels
+      print('Error loading labels from file: $e');
+      print('Using fallback Open Images v7 labels');
+      // Fallback to common Open Images v7 labels
       _labels = [
         'person',
         'bicycle',
@@ -201,330 +176,300 @@ class VideoDetector {
         'teddy bear',
         'hair drier',
         'toothbrush',
+        'banner',
+        'blanket',
+        'bridge',
+        'cardboard',
+        'counter',
+        'curtain',
+        'door-stuff',
+        'floor-wood',
+        'flower',
+        'fruit',
+        'gravel',
+        'house',
+        'light',
+        'mirror-stuff',
+        'net',
+        'pillow',
+        'platform',
+        'playingfield',
+        'railroad',
+        'river',
+        'road',
+        'roof',
+        'sand',
+        'sea',
+        'shelf',
+        'snow',
+        'stairs',
+        'tent',
+        'towel',
+        'wall-brick',
+        'wall-stone',
+        'wall-tile',
+        'wall-wood',
+        'water-other',
+        'window-blind',
+        'window-other',
+        'tree-merged',
+        'fence-merged',
+        'ceiling-merged',
+        'sky-other-merged',
+        'cabinet-merged',
+        'table-merged',
+        'floor-other-merged',
+        'pavement-merged',
+        'mountain-merged',
+        'grass-merged',
+        'dirt-merged',
+        'paper-merged',
+        'food-other-merged',
+        'building-other-merged',
+        'rock-merged',
+        'wall-other-merged',
       ];
     }
   }
 
   List<Detection> detectObjects(img.Image image) {
-    if (!_isInitialized) {
+    if (!_isInitialized || _session == null) {
       return [];
     }
 
     try {
-      if (_useOnnx && _onnxSession != null) {
-        return _detectWithOnnx(image);
-      } else if (_tfliteInterpreter != null) {
-        return _detectWithTfLite(image);
-      }
-    } catch (e) {
-      print('Error during detection: $e');
-    }
+      // Preprocess image
+      final preprocessed = _preprocessImage(image);
 
-    return [];
-  }
+      // Create input tensor
+      final inputTensor = OrtValueTensor.createTensorWithDataList(
+        preprocessed['data'] as List<double>,
+        [1, 3, INPUT_SIZE, INPUT_SIZE], // NCHW format
+      );
 
-  List<Detection> _detectWithOnnx(img.Image image) {
-    try {
-      // Preprocess image for ONNX
-      final inputTensor = _preprocessImageForOnnx(image);
-
-      // Create input for ONNX model
-      final inputs = {
-        'images': OrtValueTensor.createTensorWithDataList(
-          inputTensor,
-          [1, 3, INPUT_SIZE, INPUT_SIZE], // ONNX typically uses CHW format
-        ),
-      };
+      // Prepare inputs
+      final inputs = <String, OrtValue>{_inputNames[0]: inputTensor};
 
       // Run inference
       final stopwatch = Stopwatch()..start();
-      final outputList = _onnxSession!.run(OrtRunOptions(), inputs);
+      final outputs = _session!.run(OrtRunOptions(), inputs);
       stopwatch.stop();
 
-      print('ONNX inference time: ${stopwatch.elapsedMilliseconds}ms');
-
-      // Convert list to map format expected by _processOnnxOutputs
-      final outputs = <String, OrtValue>{};
-      for (int i = 0; i < outputList.length; i++) {
-        if (outputList[i] != null) {
-          outputs['output$i'] = outputList[i]!;
-        }
-      }
+      print('YOLOv8 inference time: ${stopwatch.elapsedMilliseconds}ms');
 
       // Process outputs
-      final detections = _processOnnxOutputs(
+      final detections = _processYoloOutputs(
         outputs,
         image.width,
         image.height,
+        preprocessed['scale_x'] as double,
+        preprocessed['scale_y'] as double,
+        preprocessed['pad_x'] as double,
+        preprocessed['pad_y'] as double,
       );
 
       // Clean up
-      for (final input in inputs.values) {
-        input.release();
-      }
-      for (final output in outputs.values) {
-        output.release();
+      inputTensor.release();
+      for (final output in outputs) {
+        output?.release();
       }
 
       return detections;
     } catch (e) {
-      print('Error in ONNX detection: $e');
+      print('Error during YOLOv8 detection: $e');
       return [];
     }
   }
 
-  List<Detection> _detectWithTfLite(img.Image image) {
-    try {
-      // Preprocess image
-      final input = _preprocessImage(image);
+  Map<String, dynamic> _preprocessImage(img.Image image) {
+    // Calculate scaling factors to maintain aspect ratio
+    final scaleX = INPUT_SIZE / image.width;
+    final scaleY = INPUT_SIZE / image.height;
+    final scale = math.min(scaleX, scaleY);
 
-      // Prepare outputs - adjust based on your model architecture
-      final outputs = _prepareOutputs();
+    // Calculate new dimensions and padding
+    final newWidth = (image.width * scale).round();
+    final newHeight = (image.height * scale).round();
+    final padX = (INPUT_SIZE - newWidth) / 2;
+    final padY = (INPUT_SIZE - newHeight) / 2;
 
-      // Run inference
-      final stopwatch = Stopwatch()..start();
-      _tfliteInterpreter!.runForMultipleInputs([input], outputs);
-      stopwatch.stop();
-
-      print(
-        'TensorFlow Lite inference time: ${stopwatch.elapsedMilliseconds}ms',
-      );
-
-      // Post-process results
-      return _postProcessOutputs(outputs, image.width, image.height);
-    } catch (e) {
-      print('Error in TensorFlow Lite detection: $e');
-      return [];
-    }
-  }
-
-  List<double> _preprocessImageForOnnx(img.Image image) {
-    // Resize image to model input size
+    // Resize image maintaining aspect ratio
     final resizedImage = img.copyResize(
       image,
-      width: INPUT_SIZE,
-      height: INPUT_SIZE,
+      width: newWidth,
+      height: newHeight,
+      interpolation: img.Interpolation.linear,
     );
 
-    // Convert to Float32List with normalization in CHW format
-    final input = <double>[];
+    // Create padded image
+    final paddedImage = img.Image(width: INPUT_SIZE, height: INPUT_SIZE);
+    img.fill(paddedImage, color: img.ColorRgb8(114, 114, 114)); // Gray padding
+
+    // Copy resized image to center of padded image
+    img.compositeImage(
+      paddedImage,
+      resizedImage,
+      dstX: padX.round(),
+      dstY: padY.round(),
+    );
+
+    // Convert to float32 normalized array in CHW format
+    final inputData = <double>[];
 
     // Red channel
     for (int y = 0; y < INPUT_SIZE; y++) {
       for (int x = 0; x < INPUT_SIZE; x++) {
-        final pixel = resizedImage.getPixel(x, y);
-        input.add(pixel.r / 255.0);
+        final pixel = paddedImage.getPixel(x, y);
+        inputData.add(pixel.r / 255.0);
       }
     }
 
     // Green channel
     for (int y = 0; y < INPUT_SIZE; y++) {
       for (int x = 0; x < INPUT_SIZE; x++) {
-        final pixel = resizedImage.getPixel(x, y);
-        input.add(pixel.g / 255.0);
+        final pixel = paddedImage.getPixel(x, y);
+        inputData.add(pixel.g / 255.0);
       }
     }
 
     // Blue channel
     for (int y = 0; y < INPUT_SIZE; y++) {
       for (int x = 0; x < INPUT_SIZE; x++) {
-        final pixel = resizedImage.getPixel(x, y);
-        input.add(pixel.b / 255.0);
+        final pixel = paddedImage.getPixel(x, y);
+        inputData.add(pixel.b / 255.0);
       }
     }
 
-    return input;
+    return {
+      'data': inputData,
+      'scale_x': scaleX,
+      'scale_y': scaleY,
+      'scale': scale,
+      'pad_x': padX,
+      'pad_y': padY,
+    };
   }
 
-  List _preprocessImage(img.Image image) {
-    // Resize image to model input size
-    final resizedImage = img.copyResize(
-      image,
-      width: INPUT_SIZE,
-      height: INPUT_SIZE,
-    );
-
-    // Convert to Float32List with normalization
-    final input = Float32List(1 * INPUT_SIZE * INPUT_SIZE * 3);
-    int pixelIndex = 0;
-
-    for (int y = 0; y < INPUT_SIZE; y++) {
-      for (int x = 0; x < INPUT_SIZE; x++) {
-        final pixel = resizedImage.getPixel(x, y);
-
-        // Extract RGB components from the Pixel object
-        final r = pixel.r.toInt();
-        final g = pixel.g.toInt();
-        final b = pixel.b.toInt();
-
-        // Normalize pixel values to [0, 1] or [-1, 1] based on your model
-        input[pixelIndex++] = r / 255.0;
-        input[pixelIndex++] = g / 255.0;
-        input[pixelIndex++] = b / 255.0;
-      }
-    }
-
-    return input.reshape([1, INPUT_SIZE, INPUT_SIZE, 3]);
-  }
-
-  List<Detection> _processOnnxOutputs(
-    Map<String, OrtValue> outputs,
-    int imageWidth,
-    int imageHeight,
+  List<Detection> _processYoloOutputs(
+    List<OrtValue?> outputs,
+    int originalWidth,
+    int originalHeight,
+    double scaleX,
+    double scaleY,
+    double padX,
+    double padY,
   ) {
     final detections = <Detection>[];
 
     try {
-      // ONNX models typically output in different formats
-      // Adjust these keys based on your specific ONNX model
-      final outputData =
-          (outputs['output0'] ?? outputs.values.first) as OrtValueTensor;
-      final predictions = outputData.value as List<double>;
+      if (outputs.isEmpty || outputs[0] == null) {
+        return detections;
+      }
 
-      // Process predictions - adjust based on your model's output format
-      // Common format: [batch, num_detections, 85] where 85 = 4 (bbox) + 1 (confidence) + 80 (classes)
-      final numDetections =
-          predictions.length ~/ 85; // Adjust based on your model
-      final confidenceThreshold = 0.5;
+      final outputTensor = outputs[0] as OrtValueTensor;
+      final predictions = outputTensor.value as List<double>;
 
-      for (int i = 0; i < numDetections; i++) {
-        final baseIndex = i * 85;
+      // YOLOv8 output format: [1, 84, 8400] or similar
+      // 84 = 4 (bbox) + 80 (classes) for COCO, adjust for OIv7
+      final numClasses = _labels.length;
+      final numPredictions = predictions.length ~/ (4 + numClasses);
+      final stride = 4 + numClasses;
 
+      for (int i = 0; i < numPredictions; i++) {
+        final baseIndex = i * stride;
+
+        // Extract box coordinates (center format)
         final centerX = predictions[baseIndex];
         final centerY = predictions[baseIndex + 1];
         final width = predictions[baseIndex + 2];
         final height = predictions[baseIndex + 3];
-        final confidence = predictions[baseIndex + 4];
 
-        if (confidence > confidenceThreshold) {
-          // Find the class with highest probability
-          double maxClassProb = 0;
-          int classId = 0;
+        // Find the class with highest confidence
+        double maxConfidence = 0.0;
+        int bestClassId = 0;
 
-          for (int j = 5; j < 85; j++) {
-            if (predictions[baseIndex + j] > maxClassProb) {
-              maxClassProb = predictions[baseIndex + j];
-              classId = j - 5;
-            }
+        for (int classId = 0; classId < numClasses; classId++) {
+          final confidence = predictions[baseIndex + 4 + classId];
+          if (confidence > maxConfidence) {
+            maxConfidence = confidence;
+            bestClassId = classId;
           }
+        }
 
-          // Convert to pixel coordinates
-          final left = ((centerX - width / 2) * imageWidth).clamp(
+        // Filter by confidence threshold
+        if (maxConfidence >= CONFIDENCE_THRESHOLD) {
+          // Convert from center format to corner format
+          final x1 = centerX - width / 2;
+          final y1 = centerY - height / 2;
+          final x2 = centerX + width / 2;
+          final y2 = centerY + height / 2;
+
+          // Adjust coordinates back to original image space
+          final scale = math.min(scaleX, scaleY);
+          final adjustedX1 = ((x1 - padX) / scale).clamp(
             0.0,
-            imageWidth.toDouble(),
+            originalWidth.toDouble(),
           );
-          final top = ((centerY - height / 2) * imageHeight).clamp(
+          final adjustedY1 = ((y1 - padY) / scale).clamp(
             0.0,
-            imageHeight.toDouble(),
+            originalHeight.toDouble(),
           );
-          final right = ((centerX + width / 2) * imageWidth).clamp(
+          final adjustedX2 = ((x2 - padX) / scale).clamp(
             0.0,
-            imageWidth.toDouble(),
+            originalWidth.toDouble(),
           );
-          final bottom = ((centerY + height / 2) * imageHeight).clamp(
+          final adjustedY2 = ((y2 - padY) / scale).clamp(
             0.0,
-            imageHeight.toDouble(),
+            originalHeight.toDouble(),
           );
 
-          final className = classId < _labels.length
-              ? _labels[classId]
+          // Skip invalid boxes
+          if (adjustedX2 <= adjustedX1 || adjustedY2 <= adjustedY1) continue;
+
+          final className = bestClassId < _labels.length
+              ? _labels[bestClassId]
               : 'Unknown';
 
           detections.add(
             Detection(
-              classId: classId,
+              classId: bestClassId,
               className: className,
-              confidence: confidence * maxClassProb,
-              boundingBox: Rect.fromLTRB(left, top, right, bottom),
+              confidence: maxConfidence,
+              boundingBox: Rect.fromLTRB(
+                adjustedX1,
+                adjustedY1,
+                adjustedX2,
+                adjustedY2,
+              ),
             ),
           );
         }
       }
     } catch (e) {
-      print('Error processing ONNX outputs: $e');
+      print('Error processing YOLOv8 outputs: $e');
     }
 
-    return _applyNMS(detections);
-  }
-
-  Map<int, Object> _prepareOutputs() {
-    // Adjust based on your model's output structure
-    // Common YOLO-style outputs: [boxes, scores, classes]
-    return {
-      0: Float32List(_outputShapes[0].reduce((a, b) => a * b)), // boxes
-      1: Float32List(_outputShapes[1].reduce((a, b) => a * b)), // scores
-      2: Float32List(_outputShapes[2].reduce((a, b) => a * b)), // classes
-    };
-  }
-
-  List<Detection> _postProcessOutputs(
-    Map<int, Object> outputs,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final boxes = outputs[0] as Float32List;
-    final scores = outputs[1] as Float32List;
-    final classes = outputs[2] as Float32List;
-
-    final detections = <Detection>[];
-    final confidenceThreshold = 0.5;
-
-    // Process each detection - adjust based on your model's output format
-    for (int i = 0; i < scores.length; i++) {
-      if (scores[i] > confidenceThreshold) {
-        // Extract bounding box coordinates (normalized 0-1)
-        final x1 = boxes[i * 4];
-        final y1 = boxes[i * 4 + 1];
-        final x2 = boxes[i * 4 + 2];
-        final y2 = boxes[i * 4 + 3];
-
-        // Convert to pixel coordinates
-        final left = (x1 * imageWidth).clamp(0.0, imageWidth.toDouble());
-        final top = (y1 * imageHeight).clamp(0.0, imageHeight.toDouble());
-        final right = (x2 * imageWidth).clamp(0.0, imageWidth.toDouble());
-        final bottom = (y2 * imageHeight).clamp(0.0, imageHeight.toDouble());
-
-        final classId = classes[i].toInt();
-        final className = classId < _labels.length
-            ? _labels[classId]
-            : 'Unknown';
-
-        detections.add(
-          Detection(
-            classId: classId,
-            className: className,
-            confidence: scores[i],
-            boundingBox: Rect.fromLTRB(left, top, right, bottom),
-          ),
-        );
-      }
-    }
-
-    // Apply Non-Maximum Suppression if needed
     return _applyNMS(detections);
   }
 
   List<Detection> _applyNMS(
     List<Detection> detections, {
-    double nmsThreshold = 0.4,
+    double nmsThreshold = NMS_THRESHOLD,
   }) {
     if (detections.isEmpty) return detections;
 
-    // Sort by confidence
+    // Sort by confidence descending
     detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     final selectedDetections = <Detection>[];
-    final suppressed = <bool>[];
-
-    for (int i = 0; i < detections.length; i++) {
-      suppressed.add(false);
-    }
+    final suppressed = List<bool>.filled(detections.length, false);
 
     for (int i = 0; i < detections.length; i++) {
       if (suppressed[i]) continue;
 
       selectedDetections.add(detections[i]);
 
+      // Suppress overlapping detections
       for (int j = i + 1; j < detections.length; j++) {
         if (suppressed[j]) continue;
 
@@ -532,9 +477,15 @@ class VideoDetector {
           detections[i].boundingBox,
           detections[j].boundingBox,
         );
+
         if (iou > nmsThreshold) {
           suppressed[j] = true;
         }
+      }
+
+      // Limit total detections
+      if (selectedDetections.length >= MAX_DETECTIONS) {
+        break;
       }
     }
 
@@ -559,12 +510,11 @@ class VideoDetector {
     final box2Area = box2.width * box2.height;
     final unionArea = box1Area + box2Area - intersectionArea;
 
-    return intersectionArea / unionArea;
+    return unionArea > 0 ? intersectionArea / unionArea : 0.0;
   }
 
   void dispose() {
-    _tfliteInterpreter?.close();
-    _onnxSession?.release();
+    _session?.release();
     _isInitialized = false;
   }
 }

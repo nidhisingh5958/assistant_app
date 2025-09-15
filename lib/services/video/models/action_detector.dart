@@ -3,29 +3,38 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:listen_iq/screens/video_assistant/detection_screen.dart';
 import 'package:image/image.dart' as img;
+import 'package:onnxruntime/onnxruntime.dart';
 
-// Simplified version without ONNX dependency for troubleshooting
 class ActionDetector {
+  static const String ACTION_MODEL_PATH = 'assets/models/action_model.onnx';
+  static const String ACTION_MODEL_QUANTISED_PATH =
+      'assets/models/action_model_quantised.onnx';
   static const String LABELS_PATH = 'assets/labels/action_labels.txt';
 
   // Model configurations for action detection
   static const int INPUT_WIDTH = 224;
   static const int INPUT_HEIGHT = 224;
-  static const int SEQUENCE_LENGTH = 8; // Reduced for testing
-  static const double CONFIDENCE_THRESHOLD = 0.5;
+  static const int SEQUENCE_LENGTH =
+      16; // Typical for action recognition models
+  static const double CONFIDENCE_THRESHOLD = 0.6;
+  static const int NUM_CLASSES =
+      400; // Kinetics-400 dataset has 400 action classes
 
   List<String> _actionLabels = [];
   bool _isInitialized = false;
   bool _useQuantisedModel = false;
 
+  // ONNX Runtime components
+  OrtSession? _session;
+  late List<String> _inputNames;
+  late List<List<int>> _inputShapes;
+  late List<String> _outputNames;
+  late List<List<int>> _outputShapes;
+
   // Frame buffer for temporal action detection
   List<img.Image> _frameBuffer = [];
-
-  // Mock detection for testing
-  bool _enableMockDetection = true;
-  int _mockDetectionCounter = 0;
+  List<Float32List> _processedFrames = [];
 
   bool get isInitialized => _isInitialized;
   List<String> get actionLabels => _actionLabels;
@@ -40,20 +49,21 @@ class ActionDetector {
       await _loadActionLabels();
       print('Action labels loaded: ${_actionLabels.length}');
 
-      // For now, just use mock detection to test the UI
-      // Later we can add ONNX model loading
-      _enableMockDetection = true;
+      // Load ONNX model
+      await _loadOnnxModel();
+      print('Action detection ONNX model loaded successfully');
 
       _isInitialized = true;
-      print('Action detection model initialized successfully (mock mode)');
+      print('Action detection model initialized successfully');
       print(
-        'Using ${_useQuantisedModel ? 'quantised' : 'full precision'} model (simulated)',
+        'Using ${_useQuantisedModel ? 'quantised' : 'full precision'} model',
       );
       print('Loaded ${_actionLabels.length} action classes');
+      print('Model expects sequence of ${SEQUENCE_LENGTH} frames');
     } catch (e) {
       print('Error initializing action detector: $e');
       _isInitialized = false;
-      rethrow; // Re-throw to let caller handle the error
+      rethrow;
     }
   }
 
@@ -68,8 +78,8 @@ class ActionDetector {
       print('Loaded ${_actionLabels.length} action labels from file');
     } catch (e) {
       print('Error loading action labels from file: $e');
-      print('Using fallback action labels');
-      // Fallback action labels for common human actions
+      print('Using fallback Kinetics-400 action labels');
+      // Fallback to common Kinetics-400 action labels
       _actionLabels = [
         'walking',
         'running',
@@ -87,83 +97,265 @@ class ActionDetector {
         'sleeping',
         'exercising',
         'cooking',
+        'playing',
+        'swimming',
+        'cycling',
+        'driving',
+        'laughing',
+        'crying',
+        'hugging',
+        'kissing',
+        'shaking hands',
+        'applauding',
+        'stretching',
+        'yawning',
+        'pointing',
+        'nodding',
+        'shaking head',
+        'looking',
+        'listening',
+        'thinking',
+        'working',
+        'studying',
+        'teaching',
+        'cleaning',
+        'washing',
+        'dressing',
+        'undressing',
       ];
     }
   }
 
+  Future<void> _loadOnnxModel() async {
+    try {
+      final modelPath = _useQuantisedModel
+          ? ACTION_MODEL_QUANTISED_PATH
+          : ACTION_MODEL_PATH;
+
+      final modelAsset = await rootBundle.load(modelPath);
+      final modelBytes = modelAsset.buffer.asUint8List();
+
+      // Create ONNX session
+      final sessionOptions = OrtSessionOptions();
+      _session = OrtSession.fromBuffer(modelBytes, sessionOptions);
+
+      // Get model metadata
+      _inputNames = _session!.getInputNames();
+      _inputShapes = _session!.getInputShapes();
+      _outputNames = _session!.getOutputNames();
+      _outputShapes = _session!.getOutputShapes();
+
+      print('Model inputs: $_inputNames');
+      print('Input shapes: $_inputShapes');
+      print('Model outputs: $_outputNames');
+      print('Output shapes: $_outputShapes');
+    } catch (e) {
+      print('Failed to load ONNX model: $e');
+      throw Exception('Failed to load action detection model: $e');
+    }
+  }
+
   List<ActionDetection> detectActions(img.Image frame) {
-    if (!_isInitialized) {
+    if (!_isInitialized || _session == null) {
       return [];
     }
 
     try {
-      // Add frame to buffer
-      _frameBuffer.add(frame);
+      // Preprocess and add frame to buffer
+      final preprocessedFrame = _preprocessFrame(frame);
+      _processedFrames.add(preprocessedFrame);
 
       // Keep only the required number of frames
-      if (_frameBuffer.length > SEQUENCE_LENGTH) {
+      if (_processedFrames.length > SEQUENCE_LENGTH) {
+        _processedFrames.removeAt(0);
+      }
+      if (_frameBuffer.length >= SEQUENCE_LENGTH) {
         _frameBuffer.removeAt(0);
       }
+      _frameBuffer.add(frame);
 
       // Need minimum frames for action detection
-      if (_frameBuffer.length < SEQUENCE_LENGTH) {
+      if (_processedFrames.length < SEQUENCE_LENGTH) {
         return [];
       }
 
-      // For testing purposes, use mock detection
-      if (_enableMockDetection) {
-        return _generateMockDetections();
+      // Prepare input tensor: [1, sequence_length, channels, height, width]
+      final inputData = _prepareSequenceInput();
+
+      // Create input tensor
+      final inputShape = [1, SEQUENCE_LENGTH, 3, INPUT_HEIGHT, INPUT_WIDTH];
+      final inputTensor = OrtValueTensor.createTensorWithDataList(
+        inputData,
+        inputShape,
+      );
+
+      // Prepare inputs map
+      final inputs = <String, OrtValue>{_inputNames[0]: inputTensor};
+
+      // Run inference
+      final stopwatch = Stopwatch()..start();
+      final outputs = _session!.run(OrtRunOptions(), inputs);
+      stopwatch.stop();
+
+      print('Action inference time: ${stopwatch.elapsedMilliseconds}ms');
+
+      // Process outputs
+      final detections = _processOutputs(outputs);
+
+      // Clean up tensors
+      inputTensor.release();
+      for (final output in outputs) {
+        output?.release();
       }
 
-      // TODO: Implement actual ONNX inference here
-      return [];
+      return detections;
     } catch (e) {
       print('Error during action detection: $e');
       return [];
     }
   }
 
-  List<ActionDetection> _generateMockDetections() {
-    _mockDetectionCounter++;
+  Float32List _preprocessFrame(img.Image frame) {
+    // Resize frame to model input size
+    final resizedFrame = img.copyResize(
+      frame,
+      width: INPUT_WIDTH,
+      height: INPUT_HEIGHT,
+    );
 
-    // Generate mock detections every few frames
-    if (_mockDetectionCounter % 30 != 0) {
-      return [];
+    // Convert to float32 with normalization
+    // Using ImageNet normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    final frameData = Float32List(3 * INPUT_HEIGHT * INPUT_WIDTH);
+    int index = 0;
+
+    // Process in CHW format (Channels, Height, Width)
+    // Red channel
+    for (int y = 0; y < INPUT_HEIGHT; y++) {
+      for (int x = 0; x < INPUT_WIDTH; x++) {
+        final pixel = resizedFrame.getPixel(x, y);
+        final normalizedR = (pixel.r / 255.0 - 0.485) / 0.229;
+        frameData[index++] = normalizedR;
+      }
     }
 
-    final random = math.Random();
+    // Green channel
+    for (int y = 0; y < INPUT_HEIGHT; y++) {
+      for (int x = 0; x < INPUT_WIDTH; x++) {
+        final pixel = resizedFrame.getPixel(x, y);
+        final normalizedG = (pixel.g / 255.0 - 0.456) / 0.224;
+        frameData[index++] = normalizedG;
+      }
+    }
+
+    // Blue channel
+    for (int y = 0; y < INPUT_HEIGHT; y++) {
+      for (int x = 0; x < INPUT_WIDTH; x++) {
+        final pixel = resizedFrame.getPixel(x, y);
+        final normalizedB = (pixel.b / 255.0 - 0.406) / 0.225;
+        frameData[index++] = normalizedB;
+      }
+    }
+
+    return frameData;
+  }
+
+  Float32List _prepareSequenceInput() {
+    final totalSize = SEQUENCE_LENGTH * 3 * INPUT_HEIGHT * INPUT_WIDTH;
+    final sequenceData = Float32List(totalSize);
+
+    int globalIndex = 0;
+    for (int frameIdx = 0; frameIdx < SEQUENCE_LENGTH; frameIdx++) {
+      final frameData = _processedFrames[frameIdx];
+      for (int i = 0; i < frameData.length; i++) {
+        sequenceData[globalIndex++] = frameData[i];
+      }
+    }
+
+    return sequenceData;
+  }
+
+  List<ActionDetection> _processOutputs(List<OrtValue?> outputs) {
     final detections = <ActionDetection>[];
 
-    // Randomly generate 1-3 action detections
-    final numDetections = 1 + random.nextInt(3);
+    try {
+      if (outputs.isEmpty || outputs[0] == null) {
+        return detections;
+      }
 
-    for (int i = 0; i < numDetections; i++) {
-      final actionIndex = random.nextInt(_actionLabels.length);
-      final confidence = 0.5 + random.nextDouble() * 0.4; // 0.5 to 0.9
+      final outputTensor = outputs[0] as OrtValueTensor;
+      final predictions = outputTensor.value as List<double>;
 
-      detections.add(
-        ActionDetection(
-          actionId: actionIndex,
-          actionName: _actionLabels[actionIndex],
-          confidence: confidence,
-          timestamp: DateTime.now(),
-        ),
-      );
+      // Apply softmax to get probabilities
+      final probabilities = _applySoftmax(predictions);
+
+      // Find top-k predictions
+      final topK = _getTopKPredictions(probabilities, k: 5);
+
+      for (final prediction in topK) {
+        final actionId = prediction['index'] as int;
+        final confidence = prediction['confidence'] as double;
+
+        if (confidence >= CONFIDENCE_THRESHOLD &&
+            actionId < _actionLabels.length) {
+          detections.add(
+            ActionDetection(
+              actionId: actionId,
+              actionName: _actionLabels[actionId],
+              confidence: confidence,
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error processing action detection outputs: $e');
     }
-
-    // Sort by confidence
-    detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     return detections;
   }
 
+  List<double> _applySoftmax(List<double> logits) {
+    // Find max for numerical stability
+    final maxLogit = logits.reduce(math.max);
+
+    // Compute exponentials
+    final expLogits = logits.map((x) => math.exp(x - maxLogit)).toList();
+
+    // Compute sum
+    final sumExp = expLogits.reduce((a, b) => a + b);
+
+    // Normalize
+    return expLogits.map((x) => x / sumExp).toList();
+  }
+
+  List<Map<String, dynamic>> _getTopKPredictions(
+    List<double> probabilities, {
+    int k = 5,
+  }) {
+    final predictions = <Map<String, dynamic>>[];
+
+    for (int i = 0; i < probabilities.length; i++) {
+      predictions.add({'index': i, 'confidence': probabilities[i]});
+    }
+
+    // Sort by confidence descending
+    predictions.sort(
+      (a, b) =>
+          (b['confidence'] as double).compareTo(a['confidence'] as double),
+    );
+
+    return predictions.take(k).toList();
+  }
+
   void clearFrameBuffer() {
     _frameBuffer.clear();
-    _mockDetectionCounter = 0;
+    _processedFrames.clear();
   }
 
   void dispose() {
     _frameBuffer.clear();
+    _processedFrames.clear();
+    _session?.release();
     _isInitialized = false;
   }
 }
@@ -195,12 +387,17 @@ class ActionDetection {
       Colors.indigo,
       Colors.cyan,
       Colors.amber,
+      Colors.deepOrange,
+      Colors.lightBlue,
+      Colors.lime,
+      Colors.deepPurple,
+      Colors.brown,
     ];
     return colors[actionId % colors.length];
   }
 
   @override
   String toString() {
-    return 'ActionDetection{actionName: $actionName, confidence: ${confidence.toStringAsFixed(2)}, timestamp: $timestamp}';
+    return 'ActionDetection{actionName: $actionName, confidence: ${confidence.toStringAsFixed(3)}, timestamp: $timestamp}';
   }
 }
