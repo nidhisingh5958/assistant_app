@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
@@ -57,6 +58,10 @@ class UnifiedVideoAnalysisService {
   bool get isInitialized => _isInitialized;
   List<String> get objectLabels => _objectLabels;
   List<String> get actionLabels => _actionLabels;
+
+  bool _isProcessing = false;
+  Queue<Completer<UnifiedAnalysisResult?>> _processingQueue = Queue();
+  static const int MAX_QUEUE_SIZE = 2;
 
   Future<void> initialize({bool useQuantisedAction = true}) async {
     _useQuantisedAction = useQuantisedAction;
@@ -184,7 +189,7 @@ class UnifiedVideoAnalysisService {
     ]; // Default fusion model input shapes
   }
 
-  Future<UnifiedAnalysisResult> analyzeFrame(
+  Future<UnifiedAnalysisResult?> analyzeFrame(
     img.Image frame,
     img.Image resizedForAction,
   ) async {
@@ -192,44 +197,73 @@ class UnifiedVideoAnalysisService {
       throw Exception('Service not initialized');
     }
 
-    final stopwatch = Stopwatch()..start();
+    // SOLUTION 1: Drop frames if queue is full
+    if (_processingQueue.length >= MAX_QUEUE_SIZE) {
+      print('⚠️ Processing queue full - dropping frame');
+      return null;
+    }
+
+    final completer = Completer<UnifiedAnalysisResult?>();
+    _processingQueue.add(completer);
+
+    _processNextFrame(frame, resizedForAction);
+
+    return completer.future;
+  }
+
+  Future<void> _processNextFrame(
+    img.Image frame,
+    img.Image resizedForAction,
+  ) async {
+    if (_isProcessing || _processingQueue.isEmpty) return;
+
+    _isProcessing = true;
+    final completer = _processingQueue.removeFirst();
 
     try {
-      // Run object detection
+      final stopwatch = Stopwatch()..start();
+
+      // SOLUTION 2: Process models in sequence to reduce memory pressure
       final objectDetections = await _runObjectDetection(frame);
 
-      // Add frame to buffer for action detection
-      _addFrameToBuffer(frame);
-
-      // Run action detection if we have enough frames
+      // Only run action detection if we have enough frames and time budget
       List<ActionDetection> actionDetections = [];
-      if (_frameBuffer.length >= SEQUENCE_LENGTH) {
+      if (stopwatch.elapsedMilliseconds < 150 &&
+          _frameBuffer.length >= SEQUENCE_LENGTH) {
         actionDetections = await _runActionDetection();
       }
 
-      // Run fusion model for context generation
-      final contextData = await _runFusionModel(
-        frame,
-        objectDetections,
-        actionDetections,
-      );
+      // Skip fusion model if processing is taking too long
+      Map<String, dynamic> contextData = {};
+      if (stopwatch.elapsedMilliseconds < 200) {
+        contextData = await _runFusionModel(
+          frame,
+          objectDetections,
+          actionDetections,
+        );
+      }
 
       stopwatch.stop();
 
-      // Store for next iteration
-      _lastObjectDetections = objectDetections;
-      _lastActionDetections = actionDetections;
-
-      return UnifiedAnalysisResult(
+      final result = UnifiedAnalysisResult(
         objectDetections: objectDetections,
         actionDetections: actionDetections,
         contextData: contextData,
         processingTime: stopwatch.elapsed,
         timestamp: DateTime.now(),
       );
+
+      completer.complete(result);
     } catch (e) {
-      print('Error in unified analysis: $e');
-      rethrow;
+      print('❌ Error in frame analysis: $e');
+      completer.complete(null);
+    } finally {
+      _isProcessing = false;
+
+      // Process next frame if queue not empty
+      if (_processingQueue.isNotEmpty) {
+        _processNextFrame(frame, resizedForAction);
+      }
     }
   }
 
@@ -351,19 +385,17 @@ class UnifiedVideoAnalysisService {
   }
 
   void _addFrameToBuffer(img.Image frame) {
-    _frameBuffer.add(frame);
-
-    // Preprocess frame for action detection
-    final processedFrame = _preprocessForAction(frame);
-    _processedFrames.add(processedFrame);
-
-    // Maintain buffer size
-    if (_frameBuffer.length > SEQUENCE_LENGTH) {
+    // Limit frame buffer size more aggressively
+    if (_frameBuffer.length >= SEQUENCE_LENGTH) {
       _frameBuffer.removeAt(0);
     }
-    if (_processedFrames.length > SEQUENCE_LENGTH) {
+    if (_processedFrames.length >= SEQUENCE_LENGTH) {
       _processedFrames.removeAt(0);
     }
+
+    _frameBuffer.add(frame);
+    final processedFrame = _preprocessForAction(frame);
+    _processedFrames.add(processedFrame);
   }
 
   Map<String, dynamic> _preprocessForObject(img.Image image) {

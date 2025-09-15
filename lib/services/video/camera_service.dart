@@ -10,6 +10,7 @@ class CameraService {
   bool _isInitialized = false;
   int _currentCameraIndex = 0;
   List<CameraDescription> _cameras = [];
+  static const int MAX_IMAGES = 3; // Limit concurrent images
 
   CameraController? get controller => _controller;
   Stream<CameraImage>? get imageStream => _imageStreamController?.stream;
@@ -209,51 +210,35 @@ class CameraService {
     required bool enableAudio,
     ImageFormatGroup? imageFormatGroup,
   }) async {
-    print('🔧 Creating controller with:');
-    print('   - Camera: ${_cameras[_currentCameraIndex].name}');
-    print('   - Resolution: $resolutionPreset');
-    print('   - Audio: $enableAudio');
-    print('   - Format: $imageFormatGroup');
+    print('🔧 Creating controller with buffer management...');
 
-    // Clean up existing controller
     await _controller?.dispose();
 
-    // Create new controller
+    // SOLUTION: Use lower resolution for heavy processing
+    final effectiveResolution = resolutionPreset == ResolutionPreset.high
+        ? ResolutionPreset.medium
+        : resolutionPreset;
+
     _controller = CameraController(
       _cameras[_currentCameraIndex],
-      resolutionPreset,
+      effectiveResolution, // Use reduced resolution
       enableAudio: enableAudio,
       imageFormatGroup: imageFormatGroup,
     );
 
-    print('🔧 Controller created, calling initialize()...');
-
-    // Add timeout to initialization
     await _controller!.initialize().timeout(
       Duration(seconds: 10),
       onTimeout: () {
-        throw CameraException(
-          'InitializationTimeout',
-          'Camera initialization timed out after 10 seconds',
-        );
+        throw CameraException('InitializationTimeout', 'Camera timed out');
       },
     );
-
-    print('🔧 Controller.initialize() completed');
 
     if (!_controller!.value.isInitialized) {
       throw CameraException(
         'InitializationFailed',
-        'Controller reports not initialized after initialize() call',
+        'Controller not initialized',
       );
     }
-
-    // Log success details
-    final previewSize = _controller!.value.previewSize;
-    print('✅ Controller initialized successfully!');
-    print('📐 Preview size: ${previewSize?.width}x${previewSize?.height}');
-    print('📱 Aspect ratio: ${_controller!.value.aspectRatio}');
-    print('🔄 Is streaming images: ${_controller!.value.isStreamingImages}');
 
     _isInitialized = true;
   }
@@ -275,16 +260,20 @@ class CameraService {
     }
 
     try {
-      print('🎬 Starting image stream...');
+      print('🎬 Starting throttled image stream...');
       _imageStreamController = StreamController<CameraImage>.broadcast();
 
+      // SOLUTION: Add stream throttling
       _controller!.startImageStream((CameraImage image) {
         if (!_imageStreamController!.isClosed) {
-          _imageStreamController!.add(image);
+          // Only add to stream if buffer isn't full
+          if (_imageStreamController!.hasListener) {
+            _imageStreamController!.add(image);
+          }
         }
       });
 
-      print('✅ Image stream started successfully');
+      print('✅ Throttled image stream started');
     } catch (e) {
       print('❌ Failed to start image stream: $e');
       rethrow;

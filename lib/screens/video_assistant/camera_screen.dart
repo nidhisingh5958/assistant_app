@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as imglib;
@@ -42,6 +42,12 @@ class _CameraScreenState extends State<CameraScreen> {
   int _fps = 0;
   DateTime _lastFpsUpdate = DateTime.now();
 
+  int _droppedFrames = 0;
+  int _processedFrames = 0;
+  DateTime _lastProcessTime = DateTime.now();
+  static const int TARGET_FPS = 10; // Limit processing to 10 FPS
+  static const Duration MIN_PROCESS_INTERVAL = Duration(milliseconds: 100);
+
   @override
   void initState() {
     super.initState();
@@ -64,8 +70,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _initializationStatus = 'Loading AI models...';
       });
 
-      await _analysisService.initialize(useQuantisedAction: true);
-      _analysisServiceInitialized = _analysisService.isInitialized;
+      // Explicitly initialize the analysis service
+      await _analysisService.initialize();
+      _analysisServiceInitialized = true;
 
       print('✅ Analysis service initialized: $_analysisServiceInitialized');
 
@@ -143,12 +150,30 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _startImageProcessing() {
     _cameraService.startImageStream();
-
     _imageSubscription = _cameraService.imageStream?.listen((image) {
-      if (!_isProcessing && mounted && _analysisServiceInitialized) {
-        _isProcessing = true;
-        _processFrame(image);
+      final now = DateTime.now();
+
+      // SOLUTION 1: Skip frames if processing is ongoing
+      if (_isProcessing) {
+        _droppedFrames++;
+        return; // Skip this frame
       }
+
+      // SOLUTION 2: Throttle processing based on target FPS
+      if (now.difference(_lastProcessTime) < MIN_PROCESS_INTERVAL) {
+        _droppedFrames++;
+        return; // Too soon, skip this frame
+      }
+
+      // SOLUTION 3: Only process if analysis service is ready
+      if (!_analysisServiceInitialized || !mounted) {
+        return;
+      }
+
+      _isProcessing = true;
+      _lastProcessTime = now;
+      _processedFrames++;
+      _processFrame(image);
     });
   }
 
@@ -161,58 +186,42 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final stopwatch = Stopwatch()..start();
 
-      // Convert CameraImage to image package Image
-      final imglib.Image? convertedImage = _convertCameraImage(image);
+      // Convert camera image to processable format
+      final convertedImage = _convertCameraImage(image);
       if (convertedImage == null) {
         _isProcessing = false;
         return;
       }
 
-      // Prepare inputs for the unified analysis service
-      // 1. Resized image for action detection
+      // Prepare resized image for action detection (as required by analyzeFrame)
       final resizedForAction = imglib.copyResize(
         convertedImage,
-        width: 112,
-        height: 112,
+        width: UnifiedVideoAnalysisService.ACTION_INPUT_SIZE,
+        height: UnifiedVideoAnalysisService.ACTION_INPUT_SIZE,
         interpolation: imglib.Interpolation.linear,
       );
 
-      // 2. Convert to Float32List for both models
-      // Assuming your models take normalized (0-1) float values.
-      final float32List = Float32List(
-        convertedImage.width * convertedImage.height * 3,
-      );
-      int pixelIndex = 0;
-      for (int y = 0; y < convertedImage.height; y++) {
-        for (int x = 0; x < convertedImage.width; x++) {
-          final pixel = convertedImage.getPixel(x, y);
-          float32List[pixelIndex++] = pixel.r / 255.0;
-          float32List[pixelIndex++] = pixel.g / 255.0;
-          float32List[pixelIndex++] = pixel.b / 255.0;
-        }
+      // SOLUTION 4: Add timeout to prevent hanging
+      final result = await _analysisService
+          .analyzeFrame(convertedImage, resizedForAction)
+          .timeout(
+            Duration(seconds: 3), // 3 second timeout
+            onTimeout: () {
+              print('⚠️ Analysis timeout - skipping frame');
+              return null;
+            },
+          );
+
+      if (result != null && mounted) {
+        setState(() {
+          _lastResult = result;
+        });
+        _updateMetrics(stopwatch.elapsed);
       }
-
-      // Now pass the correctly formatted data to your analysis service
-      // Note: You will need to modify UnifiedVideoAnalysisService.analyzeFrame
-      // to accept the new image format.
-      final result = await _analysisService.analyzeFrame(
-        convertedImage, // This is for object detection
-        resizedForAction, // This is for action detection
-      );
-
-      // The previous implementation of `analyzeFrame` only takes `imglib.Image`.
-      // You must update `UnifiedVideoAnalysisService` to process the inputs separately.
-      // The `analyzeFrame` method in `UnifiedVideoAnalysisService` should look like this:
-      // Future<UnifiedAnalysisResult> analyzeFrame(imglib.Image objectImage, imglib.Image actionImage)
-
-      stopwatch.stop();
-      final processingTime = stopwatch.elapsed;
-
-      // ... rest of the method (update metrics, set state)
     } catch (e) {
-      print('Error processing frame: $e');
+      print('❌ Frame processing error: $e');
     } finally {
-      _isProcessing = false;
+      _isProcessing = false; // CRITICAL: Always reset processing flag
     }
   }
 
@@ -269,6 +278,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  // Add performance monitoring
   void _updateMetrics(Duration processingTime) {
     _frameCount++;
     _avgInferenceTime =
@@ -278,9 +288,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final now = DateTime.now();
     if (now.difference(_lastFpsUpdate).inSeconds >= 1) {
-      _fps = _frameCount;
-      _frameCount = 0;
+      _fps = _processedFrames;
+      _processedFrames = 0;
       _lastFpsUpdate = now;
+
+      // Log performance stats
+      print(
+        '📊 FPS: $_fps, Dropped: $_droppedFrames, Avg: ${_avgInferenceTime.toInt()}ms',
+      );
+      _droppedFrames = 0;
     }
   }
 

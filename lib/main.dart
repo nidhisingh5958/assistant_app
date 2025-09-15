@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:listen_iq/utilities/app_initialization.dart';
 import 'package:listen_iq/utilities/router.dart';
 
@@ -37,4 +38,15 @@ class MyApp extends StatelessWidget {
       },
     );
   }
+}
+
+class AppConfig {
+  static const bool ENABLE_ACTION_DETECTION = true;
+  static const bool ENABLE_FUSION_MODEL = false; // Disable to reduce load
+  static const int TARGET_PROCESSING_FPS = 10;
+  static const Duration PROCESSING_TIMEOUT = Duration(milliseconds: 300);
+
+  // Camera settings optimized for AI processing
+  static const ResolutionPreset CAMERA_RESOLUTION = ResolutionPreset.medium;
+  static const ImageFormatGroup? IMAGE_FORMAT = null; // Let system choose
 }

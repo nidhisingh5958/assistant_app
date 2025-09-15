@@ -13,10 +13,9 @@ class ActionDetector {
   static const String LABELS_PATH = 'assets/labels/action_labels.txt';
 
   // Model configurations for action detection
-  static const int INPUT_WIDTH = 224;
-  static const int INPUT_HEIGHT = 224;
-  static const int SEQUENCE_LENGTH =
-      16; // Typical for action recognition models
+  static const int INPUT_WIDTH = 112;
+  static const int INPUT_HEIGHT = 112;
+  static const int SEQUENCE_LENGTH = 16;
   static const double CONFIDENCE_THRESHOLD = 0.6;
   static const int NUM_CLASSES =
       400; // Kinetics-400 dataset has 400 action classes
@@ -212,43 +211,31 @@ class ActionDetector {
   }
 
   Float32List _preprocessFrame(img.Image frame) {
-    // Resize frame to model input size
     final resizedFrame = img.copyResize(
       frame,
-      width: INPUT_WIDTH,
-      height: INPUT_HEIGHT,
+      width: INPUT_WIDTH, // Now 112
+      height: INPUT_HEIGHT, // Now 112
     );
 
-    // Convert to float32 with normalization
-    // Using ImageNet normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     final frameData = Float32List(3 * INPUT_HEIGHT * INPUT_WIDTH);
     int index = 0;
 
-    // Process in CHW format (Channels, Height, Width)
-    // Red channel
-    for (int y = 0; y < INPUT_HEIGHT; y++) {
-      for (int x = 0; x < INPUT_WIDTH; x++) {
-        final pixel = resizedFrame.getPixel(x, y);
-        final normalizedR = (pixel.r / 255.0 - 0.485) / 0.229;
-        frameData[index++] = normalizedR;
-      }
-    }
+    // ImageNet normalization
+    final means = [0.485, 0.456, 0.406];
+    final stds = [0.229, 0.224, 0.225];
 
-    // Green channel
-    for (int y = 0; y < INPUT_HEIGHT; y++) {
-      for (int x = 0; x < INPUT_WIDTH; x++) {
-        final pixel = resizedFrame.getPixel(x, y);
-        final normalizedG = (pixel.g / 255.0 - 0.456) / 0.224;
-        frameData[index++] = normalizedG;
-      }
-    }
-
-    // Blue channel
-    for (int y = 0; y < INPUT_HEIGHT; y++) {
-      for (int x = 0; x < INPUT_WIDTH; x++) {
-        final pixel = resizedFrame.getPixel(x, y);
-        final normalizedB = (pixel.b / 255.0 - 0.406) / 0.225;
-        frameData[index++] = normalizedB;
+    for (int c = 0; c < 3; c++) {
+      for (int y = 0; y < INPUT_HEIGHT; y++) {
+        for (int x = 0; x < INPUT_WIDTH; x++) {
+          final pixel = resizedFrame.getPixel(x, y);
+          final normalizedValue = switch (c) {
+            0 => (pixel.r / 255.0 - means[0]) / stds[0],
+            1 => (pixel.g / 255.0 - means[1]) / stds[1],
+            2 => (pixel.b / 255.0 - means[2]) / stds[2],
+            _ => 0.0,
+          };
+          frameData[index++] = normalizedValue;
+        }
       }
     }
 
