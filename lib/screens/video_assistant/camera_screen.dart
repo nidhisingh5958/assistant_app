@@ -343,8 +343,11 @@ class _CameraScreenState extends State<CameraScreen> {
       _frameCount = 0;
       _lastFpsUpdate = now;
 
+      final safeAvgInference = _avgInferenceTime.isFinite
+          ? _avgInferenceTime.toInt()
+          : 0;
       print(
-        '📊 Display FPS: $_fps, Processing: ${_processedFrames}fps, Dropped: $_droppedFrames, Avg: ${_avgInferenceTime.toInt()}ms',
+        '📊 Display FPS: $_fps, Processing: ${_processedFrames}fps, Dropped: $_droppedFrames, Avg: ${safeAvgInference}ms',
       );
       _droppedFrames = 0;
       _processedFrames = 0;
@@ -573,7 +576,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'AI: ${_avgInferenceTime.toInt()}ms',
+                    'AI: ${_avgInferenceTime.isFinite ? _avgInferenceTime.toInt() : 0}ms',
                     style: TextStyle(
                       color: _avgInferenceTime < 300
                           ? Colors.green

@@ -220,7 +220,7 @@ class UnifiedVideoAnalysisService {
     try {
       final stopwatch = Stopwatch()..start();
 
-      // Always try object detection first (it's more reliable)
+      // Object Detection
       List<Detection> objectDetections = [];
       if (_objectModelReady) {
         try {
@@ -236,7 +236,10 @@ class UnifiedVideoAnalysisService {
         }
       }
 
-      // Run action detection less frequently and only if we have buffer
+      // Validate objectDetections for nulls and type
+      // Dart's type system ensures non-null elements in List<Detection>
+
+      // Action Detection
       List<ActionDetection> actionDetections = [];
       if (_actionModelReady && _shouldProcessActions()) {
         try {
@@ -254,6 +257,9 @@ class UnifiedVideoAnalysisService {
           print('❌ Action detection error: $e');
         }
       }
+
+      // Validate actionDetections for nulls and type
+      // Dart's type system ensures non-null elements in List<ActionDetection>
 
       stopwatch.stop();
 
@@ -496,7 +502,24 @@ class UnifiedVideoAnalysisService {
       }
 
       final outputTensor = outputs[0] as OrtValueTensor;
-      final predictions = outputTensor.value as List<double>;
+      var predictionsRaw = outputTensor.value;
+      // Handle nested output (List<List<double>>) or nulls
+      List<double> predictions;
+      if (predictionsRaw is List<double>) {
+        predictions = predictionsRaw;
+      } else if (predictionsRaw is List<List<double>>) {
+        predictions = predictionsRaw
+            .expand((e) => e)
+            .whereType<double>()
+            .toList();
+      } else {
+        print(
+          '❌ Object detection error: output tensor is not List<double> or List<List<double>>',
+        );
+        return detections;
+      }
+      // Remove nulls and NaNs
+      predictions = predictions.where((v) => v.isFinite).toList();
 
       // YOLOv8 output format processing
       final numClasses = math.min(
@@ -594,7 +617,24 @@ class UnifiedVideoAnalysisService {
       }
 
       final outputTensor = outputs[0] as OrtValueTensor;
-      final predictions = outputTensor.value as List<double>;
+      var predictionsRaw = outputTensor.value;
+      // Handle nested output (List<List<double>>) or nulls
+      List<double> predictions;
+      if (predictionsRaw is List<double>) {
+        predictions = predictionsRaw;
+      } else if (predictionsRaw is List<List<double>>) {
+        predictions = predictionsRaw
+            .expand((e) => e)
+            .whereType<double>()
+            .toList();
+      } else {
+        print(
+          '❌ Action detection error: output tensor is not List<double> or List<List<double>>',
+        );
+        return detections;
+      }
+      // Remove nulls and NaNs
+      predictions = predictions.where((v) => v.isFinite).toList();
 
       // Apply softmax
       final probabilities = _applySoftmax(predictions);
@@ -606,7 +646,8 @@ class UnifiedVideoAnalysisService {
         final actionId = prediction['index'] as int;
         final confidence = prediction['confidence'] as double;
 
-        if (confidence >= ACTION_CONFIDENCE_THRESHOLD &&
+        if (confidence.isFinite &&
+            confidence >= ACTION_CONFIDENCE_THRESHOLD &&
             actionId < _actionLabels.length) {
           detections.add(
             ActionDetection(
