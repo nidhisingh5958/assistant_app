@@ -62,8 +62,11 @@ class DetectionResult {
   List<String> get uniqueClasses =>
       detections.map((d) => d.className).toSet().toList();
 
-  List<String> get uniqueActions =>
-      actionDetections.map((a) => a.actionName).toSet().toList();
+  List<String> get uniqueActions => actionDetections
+      .map((a) => a.actionName)
+      .whereType<String>()
+      .toSet()
+      .toList();
 
   bool get hasDetections =>
       detections.isNotEmpty || actionDetections.isNotEmpty;

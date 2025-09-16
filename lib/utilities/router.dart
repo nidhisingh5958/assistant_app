@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:listen_iq/screens/chat/chat.dart';
 import 'package:listen_iq/screens/chat/chat_home.dart';
+import 'package:listen_iq/screens/screen_recorder/screen_recorder_screen.dart';
 import 'package:listen_iq/screens/settings/contact_us.dart';
 import 'package:listen_iq/screens/settings/terms_and_conditions.dart';
 import 'package:listen_iq/screens/history.dart';
@@ -33,6 +34,13 @@ final GoRouter router = GoRouter(
           name: RouteConstants.videoAssistant,
           builder: (BuildContext context, GoRouterState state) {
             return CameraScreen(cameras: AppInitialization.cameras ?? []);
+          },
+        ),
+        GoRoute(
+          path: '/screenAssistant',
+          name: RouteConstants.screenAssistant,
+          builder: (BuildContext context, GoRouterState state) {
+            return ScreenRecorderScreen();
           },
         ),
         GoRoute(

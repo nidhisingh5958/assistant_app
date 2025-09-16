@@ -12,6 +12,7 @@ class RouteConstants {
   static String chatDetail = "chatDetail";
   static String voiceAssistant = "voiceAssistant";
   static String videoAssistant = "videoAssistant";
+  static String screenAssistant = "screenAssistant";
 
   // settings routes
   static String notifications = "notifications";

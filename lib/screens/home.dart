@@ -262,7 +262,7 @@ class _HomePageState extends State<HomeScreen> with TickerProviderStateMixin {
                           'AI\nscreen recorder',
                           Icons.auto_awesome_outlined,
                           onTap: () {
-                            // context.goNamed(RouteConstants.screenAssistant);
+                            context.goNamed(RouteConstants.screenAssistant);
                           },
                         ),
                       ],

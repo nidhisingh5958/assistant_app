@@ -10,21 +10,20 @@ class CameraService {
   bool _isInitialized = false;
   int _currentCameraIndex = 0;
   List<CameraDescription> _cameras = [];
-  static const int MAX_IMAGES = 3; // Limit concurrent images
 
   CameraController? get controller => _controller;
   Stream<CameraImage>? get imageStream => _imageStreamController?.stream;
   bool get isInitialized => _isInitialized;
 
+  // Performance optimizations
+  DateTime _lastFrameTime = DateTime.now();
+  int _frameSkipCount = 0;
+  static const int FRAME_SKIP_THRESHOLD = 2; // Skip every 2nd frame
+
   Future<void> initializeCamera(List<CameraDescription> cameras) async {
     try {
-      print('🚀 === DETAILED CAMERA INITIALIZATION DEBUG ===');
+      print('🚀 Starting optimized camera initialization...');
       print('📱 Platform: ${Platform.operatingSystem}');
-      print('🔧 Flutter mode: ${kDebugMode ? 'Debug' : 'Release'}');
-
-      // Step 1: Validate input
-      print('📷 Step 1: Validating cameras input');
-      print('📷 Cameras count: ${cameras.length}');
 
       if (cameras.isEmpty) {
         throw CameraException(
@@ -33,33 +32,28 @@ class CameraService {
         );
       }
 
-      // Log each camera details
-      for (int i = 0; i < cameras.length; i++) {
-        final camera = cameras[i];
-        print('📷 Camera $i:');
-        print('   - Name: ${camera.name}');
-        print('   - Direction: ${camera.lensDirection}');
-        print('   - Sensor Orientation: ${camera.sensorOrientation}');
+      _cameras = List.from(cameras);
+      print('📷 Available cameras: ${_cameras.length}');
+
+      // Log camera details
+      for (int i = 0; i < _cameras.length; i++) {
+        final camera = _cameras[i];
+        print('📷 Camera $i: ${camera.name} (${camera.lensDirection})');
       }
 
-      _cameras = List.from(cameras);
-
-      // Step 2: Check permissions thoroughly
-      print('🔒 Step 2: Checking permissions');
+      // Check permissions first
       await _checkAndRequestPermissions();
+      print('✅ Permissions granted');
 
-      // Step 3: Test camera availability
-      print('🔍 Step 3: Testing camera availability');
+      // Test camera availability
       await _testCameraAvailability();
+      print('✅ Camera availability confirmed');
 
-      // Step 4: Initialize controller with different strategies
-      print('⚙️ Step 4: Initializing camera controller');
-      await _initializeCameraControllerWithFallback();
-
+      // Initialize with optimized settings
+      await _initializeCameraWithOptimizedSettings();
       print('✅ Camera initialization completed successfully!');
     } catch (e, stackTrace) {
-      print('❌ === CAMERA INITIALIZATION FAILED ===');
-      print('Error: $e');
+      print('❌ Camera initialization failed: $e');
       print('Stack trace: $stackTrace');
       _isInitialized = false;
       await _cleanup();
@@ -68,63 +62,106 @@ class CameraService {
   }
 
   Future<void> _checkAndRequestPermissions() async {
-    try {
-      // Check camera permission
-      var cameraStatus = await Permission.camera.status;
-      print('📋 Camera permission status: $cameraStatus');
+    var cameraStatus = await Permission.camera.status;
+    print('📋 Camera permission status: $cameraStatus');
+
+    if (!cameraStatus.isGranted) {
+      print('📋 Requesting camera permission...');
+      cameraStatus = await Permission.camera.request();
+      print('📋 Camera permission after request: $cameraStatus');
 
       if (!cameraStatus.isGranted) {
-        print('📋 Requesting camera permission...');
-        cameraStatus = await Permission.camera.request();
-        print('📋 Camera permission after request: $cameraStatus');
-
-        if (!cameraStatus.isGranted) {
-          if (cameraStatus.isPermanentlyDenied) {
-            throw CameraException(
-              'CameraPermissionPermanentlyDenied',
-              'Camera permission permanently denied. Please enable it in app settings.',
-            );
-          } else {
-            throw CameraException(
-              'CameraPermissionDenied',
-              'Camera permission denied',
-            );
-          }
+        if (cameraStatus.isPermanentlyDenied) {
+          throw CameraException(
+            'CameraPermissionPermanentlyDenied',
+            'Camera permission permanently denied. Please enable it in app settings.',
+          );
+        } else {
+          throw CameraException(
+            'CameraPermissionDenied',
+            'Camera permission denied',
+          );
         }
       }
-
-      // For Android, also check microphone if needed
-      if (Platform.isAndroid) {
-        final micStatus = await Permission.microphone.status;
-        print('🎤 Microphone permission status: $micStatus');
-      }
-    } catch (e) {
-      print('❌ Permission check failed: $e');
-      rethrow;
     }
   }
 
   Future<void> _testCameraAvailability() async {
     try {
-      print('🔍 Testing camera availability...');
-
-      // Try to get available cameras again as a test
       final testCameras = await availableCameras();
-      print('🔍 availableCameras() returned: ${testCameras.length} cameras');
+      print('🔍 Camera availability test: ${testCameras.length} cameras found');
+
+      if (testCameras.isEmpty) {
+        throw CameraException(
+          'NoCamerasFound',
+          'No cameras available on this device',
+        );
+      }
 
       if (testCameras.length != _cameras.length) {
         print('⚠️ Warning: Camera count mismatch!');
-        print(
-          '⚠️ Original: ${_cameras.length}, Current: ${testCameras.length}',
-        );
+        print('⚠️ Expected: ${_cameras.length}, Found: ${testCameras.length}');
+        _cameras = testCameras; // Use the fresh camera list
       }
     } catch (e) {
-      print('❌ Camera availability test failed: $e');
       throw CameraException(
         'CameraAvailabilityTest',
         'Failed to verify camera availability: $e',
       );
     }
+  }
+
+  Future<void> _initializeCameraWithOptimizedSettings() async {
+    final strategies = [
+      () => _createAndInitializeController(
+        resolutionPreset: ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      ),
+      () => _createAndInitializeController(
+        resolutionPreset: ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      ),
+      () => _createAndInitializeController(
+        resolutionPreset: ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: null,
+      ),
+      () => _createAndInitializeController(
+        resolutionPreset: ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: null,
+      ),
+    ];
+
+    Exception? lastError;
+
+    for (int i = 0; i < strategies.length; i++) {
+      try {
+        print(
+          '🔧 Trying initialization strategy ${i + 1}/${strategies.length}',
+        );
+        await strategies[i]();
+        print('✅ Strategy ${i + 1} succeeded!');
+        return;
+      } catch (e) {
+        print('❌ Strategy ${i + 1} failed: $e');
+        lastError = e is Exception ? e : Exception(e.toString());
+        await _cleanup();
+
+        // Wait a bit before trying next strategy
+        if (i < strategies.length - 1) {
+          await Future.delayed(Duration(milliseconds: 500));
+        }
+      }
+    }
+
+    throw lastError ??
+        CameraException(
+          'AllStrategiesFailed',
+          'All initialization strategies failed',
+        );
   }
 
   Future<void> _initializeCameraControllerWithFallback() async {
@@ -260,20 +297,41 @@ class CameraService {
     }
 
     try {
-      print('🎬 Starting throttled image stream...');
+      print('🎬 Starting optimized image stream...');
       _imageStreamController = StreamController<CameraImage>.broadcast();
 
-      // SOLUTION: Add stream throttling
+      // Throttle to target FPS
+      DateTime _lastFrameTime = DateTime.now();
+      const int targetFps = 10;
+      const Duration minInterval = Duration(milliseconds: 1000 ~/ targetFps);
+
+      bool _isProcessing = false;
+
       _controller!.startImageStream((CameraImage image) {
-        if (!_imageStreamController!.isClosed) {
-          // Only add to stream if buffer isn't full
-          if (_imageStreamController!.hasListener) {
-            _imageStreamController!.add(image);
-          }
+        final now = DateTime.now();
+        if (_isProcessing) {
+          // Drop frame if still processing previous
+          return;
         }
+        if (now.difference(_lastFrameTime) < minInterval) {
+          // Throttle frame rate
+          return;
+        }
+        _lastFrameTime = now;
+        _isProcessing = true;
+
+        if (!_imageStreamController!.isClosed &&
+            _imageStreamController!.hasListener) {
+          _imageStreamController!.add(image);
+        }
+
+        // Reset processing flag after frame is handled externally
+        Future.delayed(minInterval, () {
+          _isProcessing = false;
+        });
       });
 
-      print('✅ Throttled image stream started');
+      print('✅ Optimized image stream started');
     } catch (e) {
       print('❌ Failed to start image stream: $e');
       rethrow;

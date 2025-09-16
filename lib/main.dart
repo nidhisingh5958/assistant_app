@@ -19,6 +19,7 @@ class MyApp extends StatelessWidget {
       title: 'ListenIQ',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        visualDensity: VisualDensity.adaptivePlatformDensity,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
           brightness: Brightness.dark,
@@ -43,7 +44,7 @@ class MyApp extends StatelessWidget {
 class AppConfig {
   static const bool ENABLE_ACTION_DETECTION = true;
   static const bool ENABLE_FUSION_MODEL = false; // Disable to reduce load
-  static const int TARGET_PROCESSING_FPS = 10;
+  static const int TARGET_PROCESSING_FPS = 30;
   static const Duration PROCESSING_TIMEOUT = Duration(milliseconds: 300);
 
   // Camera settings optimized for AI processing
