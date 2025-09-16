@@ -9,7 +9,6 @@ class AppHeader extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback? onMenuPressed;
   final VoidCallback? onDetailPressed;
   final VoidCallback? onProfilePressed;
-
   final List<Widget>? actions;
   final bool centerTitle;
   final double elevation;
@@ -58,10 +57,6 @@ class AppHeader extends StatefulWidget implements PreferredSizeWidget {
 class _AppHeaderState extends State<AppHeader> {
   @override
   Widget build(BuildContext context) {
-    // Debug print to verify isInChat value
-    print('AppHeader isInChat: ${widget.isInChat}');
-
-    // Simplified leading widget without animations for debugging
     Widget leadingWidget = IconButton(
       icon: Icon(
         widget.isInChat
@@ -73,7 +68,6 @@ class _AppHeaderState extends State<AppHeader> {
       onPressed: widget.isInChat ? widget.onBackPressed : widget.onMenuPressed,
     );
 
-    // Simplified title without animations for debugging
     Widget titleContent;
     if (widget.searchBar != null) {
       titleContent = Padding(

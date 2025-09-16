@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screen_recording/flutter_screen_recording.dart';
+import 'package:listen_iq/screens/components/appbar.dart';
 import 'package:listen_iq/screens/screen_recorder/recording_list_screen.dart';
+import 'package:listen_iq/screens/screen_recorder/recording_overlay.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -17,6 +19,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
   String? _recordingPath;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  String _recordingsPath = '';
 
   @override
   void initState() {
@@ -29,6 +32,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     _requestPermissions();
+    _initializeRecordingsPath();
   }
 
   @override
@@ -37,11 +41,69 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
     super.dispose();
   }
 
+  Future<void> _initializeRecordingsPath() async {
+    try {
+      Directory? directory;
+      if (Platform.isAndroid) {
+        // Try to use external storage first, then fall back to app directory
+        try {
+          directory = Directory('/storage/emulated/0/Movies/ScreenRecordings');
+          if (!await directory.exists()) {
+            await directory.create(recursive: true);
+          }
+          // Test if we can write to this directory
+          await directory.list().toList();
+        } catch (e) {
+          print(
+            'Cannot access /storage/emulated/0/Movies/ScreenRecordings: $e',
+          );
+          // Fall back to external storage directory
+          directory = await getExternalStorageDirectory();
+          if (directory != null) {
+            directory = Directory('${directory.path}/ScreenRecordings');
+            if (!await directory.exists()) {
+              await directory.create(recursive: true);
+            }
+          }
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory != null) {
+        setState(() {
+          _recordingsPath = directory!.path;
+        });
+        print('Recordings will be saved to: ${directory.path}');
+      }
+    } catch (e) {
+      print('Error setting up recordings directory: $e');
+      // Final fallback to app documents directory
+      try {
+        Directory fallbackDir = await getApplicationDocumentsDirectory();
+        setState(() {
+          _recordingsPath = fallbackDir.path;
+        });
+      } catch (e2) {
+        print('Final fallback directory also failed: $e2');
+      }
+    }
+  }
+
   Future<void> _requestPermissions() async {
-    await Permission.storage.request();
-    await Permission.microphone.request();
+    Map<Permission, PermissionStatus> permissions = await [
+      Permission.storage,
+      Permission.microphone,
+      Permission.manageExternalStorage,
+    ].request();
+
+    print('Permission statuses: $permissions');
+
+    // For Android 11+, we might need to request MANAGE_EXTERNAL_STORAGE
     if (Platform.isAndroid) {
-      await Permission.manageExternalStorage.request();
+      if (await Permission.manageExternalStorage.isDenied) {
+        await Permission.manageExternalStorage.request();
+      }
     }
   }
 
@@ -51,33 +113,48 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
         _isProcessing = true;
       });
 
-      // Get external storage directory
-      Directory? directory;
-      if (Platform.isAndroid) {
-        directory = await getExternalStorageDirectory();
-      } else {
-        directory = await getApplicationDocumentsDirectory();
+      print('Starting screen recording...');
+
+      if (_recordingsPath.isEmpty) {
+        await _initializeRecordingsPath();
       }
 
-      if (directory != null) {
-        String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        String fileName = 'screen_recording_$timestamp.mp4';
-        String filePath = '${directory.path}/$fileName';
+      String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      String fileName = 'screen_recording_$timestamp.mp4';
 
-        await FlutterScreenRecording.startRecordScreen(fileName);
+      // Start recording with the filename
+      bool started = await FlutterScreenRecording.startRecordScreen(fileName);
 
+      if (started) {
         setState(() {
           _isRecording = true;
           _isProcessing = false;
-          _recordingPath = filePath;
+          _recordingPath = '$_recordingsPath/$fileName';
         });
 
         _pulseController.repeat(reverse: true);
+
+        // Show recording overlay
+        RecordingOverlay.show(() {
+          _stopRecording();
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Screen recording started!'),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        setState(() {
+          _isProcessing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start recording. Check permissions.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -85,10 +162,12 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       setState(() {
         _isProcessing = false;
       });
+      print('Recording error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to start recording: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -105,18 +184,64 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       _pulseController.stop();
       _pulseController.reset();
 
+      // Hide recording overlay
+      RecordingOverlay.hide();
+
       setState(() {
         _isRecording = false;
         _isProcessing = false;
       });
 
-      if (path != null) {
+      print('Recording stopped, path: $path');
+
+      if (path != null && path.isNotEmpty) {
+        // Check if file exists
+        File recordedFile = File(path);
+        if (await recordedFile.exists()) {
+          print('File exists at: $path');
+          print('File size: ${await recordedFile.length()} bytes');
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Recording saved successfully!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'View',
+                textColor: Colors.white,
+                onPressed: () => _navigateToRecordings(),
+              ),
+            ),
+          );
+        } else {
+          print('File does not exist at expected path');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Recording completed but file not found at expected location',
+              ),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Check Gallery',
+                textColor: Colors.white,
+                onPressed: () => _navigateToRecordings(),
+              ),
+            ),
+          );
+        }
+      } else {
+        print('No path returned from recording');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Recording saved successfully!'),
-            backgroundColor: Colors.green,
+            content: Text(
+              'Recording completed. Check your gallery or recordings folder.',
+            ),
+            backgroundColor: Colors.blue,
+            behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
-              label: 'View',
+              label: 'Browse',
+              textColor: Colors.white,
               onPressed: () => _navigateToRecordings(),
             ),
           ),
@@ -127,10 +252,13 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
         _isRecording = false;
         _isProcessing = false;
       });
+      print('Stop recording error: $e');
+      RecordingOverlay.hide();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to stop recording: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -146,13 +274,12 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Screen Recorder'),
-        backgroundColor: Colors.blue.shade700,
-        elevation: 0,
+      appBar: AppHeader(
+        title: 'Screen Recorder',
+        centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.video_library),
+            icon: Icon(Icons.video_library, color: Colors.white),
             onPressed: _navigateToRecordings,
             tooltip: 'View Recordings',
           ),
@@ -163,7 +290,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.blue.shade700, Colors.blue.shade900],
+            colors: [Colors.grey.shade900, Colors.black],
           ),
         ),
         child: Center(
@@ -222,7 +349,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                         child: _isProcessing
                             ? CircularProgressIndicator(
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.blue.shade700,
+                                  Colors.grey.shade700,
                                 ),
                               )
                             : Icon(
@@ -243,12 +370,13 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
               // Action Text
               Text(
                 _isRecording
-                    ? 'Tap to stop recording'
+                    ? 'Recording... Use notification to stop'
                     : 'Tap to start recording',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.white.withOpacity(0.8),
                 ),
+                textAlign: TextAlign.center,
               ),
 
               SizedBox(height: 60),
@@ -260,13 +388,29 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                 label: Text('View Recordings'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
-                  foregroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.grey.shade800,
                   padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
               ),
+
+              SizedBox(height: 20),
+
+              // Debug info
+              if (_recordingsPath.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Save location: $_recordingsPath',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
             ],
           ),
         ),

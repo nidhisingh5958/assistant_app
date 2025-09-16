@@ -54,8 +54,6 @@ dependencies:
   # ONNX Runtime for Action Detection Models
   onnxruntime: ^1.4.1
 
-  collection: ^1.19.1
-  huggingface_dart: ^0.0.2
   flutter_tts: ^4.2.3
   tiktoken: ^1.0.3
   
@@ -70,6 +68,7 @@ dependencies:
   video_player: ^2.10.0
   file_picker: ^10.3.3
   intl: ^0.20.2
+  overlay_support: ^2.1.0
   
 dev_dependencies:
   flutter_test:

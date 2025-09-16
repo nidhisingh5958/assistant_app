@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:listen_iq/screens/components/appbar.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 
@@ -22,6 +23,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _showControls = true;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -36,6 +38,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _controller.initialize();
       setState(() {
         _duration = _controller.value.duration;
+        _isInitialized = true;
       });
 
       _controller.addListener(() {
@@ -45,10 +48,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         });
       });
     } catch (e) {
+      print('Video player initialization error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to load video: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -90,13 +95,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.videoTitle, style: TextStyle(color: Colors.white)),
+      appBar: AppHeader(
+        title: widget.videoTitle,
+        isInChat: true,
+        onBackPressed: () => Navigator.pop(context),
         backgroundColor: Colors.black,
-        iconTheme: IconThemeData(color: Colors.white),
-        elevation: 0,
+        foregroundColor: Colors.white,
       ),
-      body: _controller.value.isInitialized
+      body: _isInitialized
           ? GestureDetector(
               onTap: () {
                 setState(() {
@@ -238,8 +244,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             )
           : Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading video...',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
               ),
             ),
     );
