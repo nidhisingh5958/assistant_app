@@ -154,9 +154,13 @@ class DetectionPainter extends CustomPainter {
     );
 
     // Draw label background
+    final confidencePercent = (detection.confidence * 100);
+    final safePercent = confidencePercent.isFinite
+        ? confidencePercent.toInt()
+        : 0;
     final textPainter = TextPainter(
       text: TextSpan(
-        text: '${detection.className} ${(detection.confidence * 100).toInt()}%',
+        text: '${detection.className} ${safePercent}%',
         style: TextStyle(color: Colors.white),
       ),
       textDirection: TextDirection.ltr,

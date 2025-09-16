@@ -21,7 +21,6 @@ class _SideMenuState extends State<SideMenu> {
     _loadFileCount();
   }
 
-
   Future<String> _getEncFilesDir() async {
     final dir = await getApplicationDocumentsDirectory();
     final encDir = Directory("${dir.path}/enc_files");
@@ -43,11 +42,11 @@ class _SideMenuState extends State<SideMenu> {
   }
 
   Future<void> _loadFileCount() async {
-  final count = await _encfilesCount();
-  setState(() {
-    _totalFiles = count;
-  });
-}
+    final count = await _encfilesCount();
+    setState(() {
+      _totalFiles = count;
+    });
+  }
 
   // Helper method to close drawer and navigate
   void _navigateAndClose(String routeName) {
@@ -104,10 +103,7 @@ class _SideMenuState extends State<SideMenu> {
           const SizedBox(height: 8),
           Text(
             "Number of Encrypted files: $_totalFiles",
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.white70,
-            ),
+            style: const TextStyle(fontSize: 14, color: Colors.white70),
           ),
           const SizedBox(height: 4),
           Text(
@@ -128,24 +124,20 @@ class _SideMenuState extends State<SideMenu> {
       children: [
         _buildSectionHeader("Services"),
         const SizedBox(height: 12),
-        _buildMenuItem(
-          icon: Icons.videocam,
-          label: 'Video',
-          color: const Color(0xFFEC4899),
-          onTap: () {
-            _closeDrawer();
-            // Navigate to video service when route is available
-            // _navigateAndClose(RouteConstants.videoService);
-          },
-        ),
+        // _buildMenuItem(
+        //   icon: Icons.videocam,
+        //   label: 'Video',
+        //   color: const Color(0xFFEC4899),
+        //   onTap: () {
+        //     _navigateAndClose(RouteConstants.videoService);
+        //   },
+        // ),
         _buildMenuItem(
           icon: Icons.screen_share,
           label: 'Screen Recording',
           color: const Color(0xFF8B5CF6),
           onTap: () {
-            _closeDrawer();
-            // Navigate to screen recording service when route is available
-            // _navigateAndClose(RouteConstants.screenRecording);
+            _navigateAndClose(RouteConstants.screenRecording);
           },
         ),
         _buildMenuItem(
@@ -153,9 +145,7 @@ class _SideMenuState extends State<SideMenu> {
           label: 'Audio',
           color: const Color(0xFFF59E0B),
           onTap: () {
-            _closeDrawer();
-            // Navigate to audio service when route is available
-            // _navigateAndClose(RouteConstants.audioService);
+            _navigateAndClose(RouteConstants.audioService);
           },
         ),
       ],

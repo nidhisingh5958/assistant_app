@@ -506,11 +506,15 @@ class UnifiedVideoAnalysisService {
       // Handle nested output (List<List<double>>) or nulls
       List<double> predictions;
       if (predictionsRaw is List<double>) {
-        predictions = predictionsRaw;
+        predictions = predictionsRaw
+            .where((v) => v != null && v is double && v.isFinite)
+            .cast<double>()
+            .toList();
       } else if (predictionsRaw is List<List<double>>) {
         predictions = predictionsRaw
             .expand((e) => e)
-            .whereType<double>()
+            .where((v) => v != null && v is double && v.isFinite)
+            .cast<double>()
             .toList();
       } else {
         print(
@@ -518,16 +522,16 @@ class UnifiedVideoAnalysisService {
         );
         return detections;
       }
+
       // Remove nulls and NaNs
       predictions = predictions.where((v) => v.isFinite).toList();
 
-      // YOLOv8 output format processing
-      final numClasses = math.min(
-        _objectLabels.length,
-        80,
-      ); // Limit to common classes
-      final stride = 4 + numClasses;
-      final numPredictions = predictions.length ~/ stride;
+      // Parse output dimensions
+      final numPredictions = predictions.length > 0
+          ? (predictions.length / (_objectLabels.length + 5)).floor()
+          : 0;
+      final stride = _objectLabels.length + 5;
+      final numClasses = stride > 4 ? stride - 5 : _objectLabels.length;
 
       final scale = preprocessed['scale'] as double;
       final padX = preprocessed['pad_x'] as double;
@@ -537,20 +541,25 @@ class UnifiedVideoAnalysisService {
         final baseIndex = i * stride;
 
         // Extract box coordinates
-        final centerX = predictions[baseIndex] * OBJECT_INPUT_SIZE;
-        final centerY = predictions[baseIndex + 1] * OBJECT_INPUT_SIZE;
-        final width = predictions[baseIndex + 2] * OBJECT_INPUT_SIZE;
-        final height = predictions[baseIndex + 3] * OBJECT_INPUT_SIZE;
+        final centerX = predictions[baseIndex] * OBJECT_INPUT_SIZE.toDouble();
+        final centerY =
+            predictions[baseIndex + 1] * OBJECT_INPUT_SIZE.toDouble();
+        final width = predictions[baseIndex + 2] * OBJECT_INPUT_SIZE.toDouble();
+        final height =
+            predictions[baseIndex + 3] * OBJECT_INPUT_SIZE.toDouble();
 
         // Find best class
         double maxConfidence = 0.0;
         int bestClassId = 0;
 
         for (int classId = 0; classId < numClasses; classId++) {
-          final confidence = predictions[baseIndex + 4 + classId];
-          if (confidence > maxConfidence) {
-            maxConfidence = confidence;
-            bestClassId = classId;
+          final index = baseIndex + 4 + classId;
+          if (index < predictions.length) {
+            final confidence = predictions[index];
+            if (confidence > maxConfidence) {
+              maxConfidence = confidence;
+              bestClassId = classId;
+            }
           }
         }
 
@@ -751,6 +760,7 @@ class UnifiedVideoAnalysisService {
 
   List<String> _getFallbackObjectLabels() {
     return [
+      'laptop',
       'person',
       'bicycle',
       'car',
