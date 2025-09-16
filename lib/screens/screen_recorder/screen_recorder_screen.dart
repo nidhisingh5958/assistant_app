@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import 'package:listen_iq/screens/components/appbar.dart';
 import 'package:listen_iq/screens/screen_recorder/recording_list_screen.dart';
-import 'package:listen_iq/screens/screen_recorder/recording_overlay.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -20,6 +19,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   String _recordingsPath = '';
+  OverlayEntry? _overlayEntry;
 
   @override
   void initState() {
@@ -38,26 +38,36 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _hideOverlay();
     super.dispose();
+  }
+
+  void _showOverlay() {
+    _overlayEntry = OverlayEntry(
+      builder: (context) => _RecordingOverlayWidget(onStop: _stopRecording),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _hideOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
   }
 
   Future<void> _initializeRecordingsPath() async {
     try {
       Directory? directory;
       if (Platform.isAndroid) {
-        // Try to use external storage first, then fall back to app directory
         try {
           directory = Directory('/storage/emulated/0/Movies/ScreenRecordings');
           if (!await directory.exists()) {
             await directory.create(recursive: true);
           }
-          // Test if we can write to this directory
           await directory.list().toList();
         } catch (e) {
           print(
             'Cannot access /storage/emulated/0/Movies/ScreenRecordings: $e',
           );
-          // Fall back to external storage directory
           directory = await getExternalStorageDirectory();
           if (directory != null) {
             directory = Directory('${directory.path}/ScreenRecordings');
@@ -78,7 +88,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       }
     } catch (e) {
       print('Error setting up recordings directory: $e');
-      // Final fallback to app documents directory
       try {
         Directory fallbackDir = await getApplicationDocumentsDirectory();
         setState(() {
@@ -99,7 +108,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
 
     print('Permission statuses: $permissions');
 
-    // For Android 11+, we might need to request MANAGE_EXTERNAL_STORAGE
     if (Platform.isAndroid) {
       if (await Permission.manageExternalStorage.isDenied) {
         await Permission.manageExternalStorage.request();
@@ -122,7 +130,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
       String fileName = 'screen_recording_$timestamp.mp4';
 
-      // Start recording with the filename
       bool started = await FlutterScreenRecording.startRecordScreen(fileName);
 
       if (started) {
@@ -133,11 +140,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
         });
 
         _pulseController.repeat(reverse: true);
-
-        // Show recording overlay
-        RecordingOverlay.show(() {
-          _stopRecording();
-        });
+        _showOverlay();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -183,9 +186,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
 
       _pulseController.stop();
       _pulseController.reset();
-
-      // Hide recording overlay
-      RecordingOverlay.hide();
+      _hideOverlay();
 
       setState(() {
         _isRecording = false;
@@ -195,7 +196,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
       print('Recording stopped, path: $path');
 
       if (path != null && path.isNotEmpty) {
-        // Check if file exists
         File recordedFile = File(path);
         if (await recordedFile.exists()) {
           print('File exists at: $path');
@@ -214,7 +214,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
             ),
           );
         } else {
-          print('File does not exist at expected path');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -231,7 +230,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
           );
         }
       } else {
-        print('No path returned from recording');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -253,7 +251,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
         _isProcessing = false;
       });
       print('Stop recording error: $e');
-      RecordingOverlay.hide();
+      _hideOverlay();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to stop recording: $e'),
@@ -297,7 +295,6 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Status Text
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 decoration: BoxDecoration(
@@ -318,10 +315,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                   ),
                 ),
               ),
-
               SizedBox(height: 60),
-
-              // Recording Button
               AnimatedBuilder(
                 animation: _pulseAnimation,
                 builder: (context, child) {
@@ -364,13 +358,10 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                   );
                 },
               ),
-
               SizedBox(height: 30),
-
-              // Action Text
               Text(
                 _isRecording
-                    ? 'Recording... Use notification to stop'
+                    ? 'Recording... Use overlay to stop'
                     : 'Tap to start recording',
                 style: TextStyle(
                   fontSize: 16,
@@ -378,10 +369,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                 ),
                 textAlign: TextAlign.center,
               ),
-
               SizedBox(height: 60),
-
-              // View Recordings Button
               ElevatedButton.icon(
                 onPressed: _navigateToRecordings,
                 icon: Icon(Icons.video_library),
@@ -395,10 +383,7 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                   ),
                 ),
               ),
-
               SizedBox(height: 20),
-
-              // Debug info
               if (_recordingsPath.isNotEmpty)
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
@@ -411,6 +396,115 @@ class _ScreenRecorderScreenState extends State<ScreenRecorderScreen>
                     textAlign: TextAlign.center,
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Internal overlay widget
+class _RecordingOverlayWidget extends StatefulWidget {
+  final VoidCallback onStop;
+
+  const _RecordingOverlayWidget({required this.onStop});
+
+  @override
+  State<_RecordingOverlayWidget> createState() =>
+      _RecordingOverlayWidgetState();
+}
+
+class _RecordingOverlayWidgetState extends State<_RecordingOverlayWidget>
+    with TickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 20,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.red.shade600,
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.3),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  return Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(_animation.value),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                },
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Recording...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              Spacer(),
+              GestureDetector(
+                onTap: widget.onStop,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Text(
+                    'STOP',
+                    style: TextStyle(
+                      color: Colors.red.shade600,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:listen_iq/screens/chat/chat.dart';
 import 'package:listen_iq/screens/chat/chat_home.dart';
+import 'package:listen_iq/screens/screen_recorder/recording_list_screen.dart';
 import 'package:listen_iq/screens/screen_recorder/screen_recorder_screen.dart';
 import 'package:listen_iq/screens/settings/contact_us.dart';
 import 'package:listen_iq/screens/settings/terms_and_conditions.dart';
 import 'package:listen_iq/screens/history.dart';
 import 'package:listen_iq/screens/home.dart';
 import 'package:listen_iq/screens/video_assistant/camera_screen.dart';
+import 'package:listen_iq/screens/voice_assistant/audio_service.dart';
 import 'package:listen_iq/screens/voice_assistant/voice_assistant.dart';
 import 'package:listen_iq/utilities/app_initialization.dart';
 import 'package:listen_iq/utilities/router_constants.dart';
@@ -28,6 +30,15 @@ final GoRouter router = GoRouter(
           builder: (BuildContext context, GoRouterState state) {
             return VoiceAssistantScreen();
           },
+          routes: <RouteBase>[
+            GoRoute(
+              path: '/audioService',
+              name: RouteConstants.audioService,
+              builder: (BuildContext context, GoRouterState state) {
+                return AudioServiceScreen();
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: '/videoAssistant',
@@ -42,6 +53,15 @@ final GoRouter router = GoRouter(
           builder: (BuildContext context, GoRouterState state) {
             return ScreenRecorderScreen();
           },
+          routes: <RouteBase>[
+            GoRoute(
+              path: '/screenRecording',
+              name: RouteConstants.screenRecording,
+              builder: (BuildContext context, GoRouterState state) {
+                return RecordingsListScreen();
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: '/chat_home',

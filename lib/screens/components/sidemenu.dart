@@ -88,24 +88,22 @@ class _SideMenuState extends State<SideMenu> {
       children: [
         _buildSectionHeader("Services"),
         const SizedBox(height: 12),
-        _buildMenuItem(
-          icon: Icons.videocam,
-          label: 'Video',
-          color: const Color(0xFFEC4899),
-          onTap: () {
-            _closeDrawer();
-            // Navigate to video service when route is available
-            // _navigateAndClose(RouteConstants.videoService);
-          },
-        ),
+        // _buildMenuItem(
+        //   icon: Icons.videocam,
+        //   label: 'Video',
+        //   color: const Color(0xFFEC4899),
+        //   onTap: () {
+        //     _closeDrawer();
+        //     // Navigate to video service when route is available
+        //     // _navigateAndClose(RouteConstants.videoService);
+        //   },
+        // ),
         _buildMenuItem(
           icon: Icons.screen_share,
           label: 'Screen Recording',
           color: const Color(0xFF8B5CF6),
           onTap: () {
-            _closeDrawer();
-            // Navigate to screen recording service when route is available
-            // _navigateAndClose(RouteConstants.screenRecording);
+            _navigateAndClose(RouteConstants.screenRecording);
           },
         ),
         _buildMenuItem(
@@ -113,9 +111,7 @@ class _SideMenuState extends State<SideMenu> {
           label: 'Audio',
           color: const Color(0xFFF59E0B),
           onTap: () {
-            _closeDrawer();
-            // Navigate to audio service when route is available
-            // _navigateAndClose(RouteConstants.audioService);
+            _navigateAndClose(RouteConstants.audioService);
           },
         ),
       ],

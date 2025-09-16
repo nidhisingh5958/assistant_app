@@ -13,6 +13,9 @@ class RouteConstants {
   static String voiceAssistant = "voiceAssistant";
   static String videoAssistant = "videoAssistant";
   static String screenAssistant = "screenAssistant";
+  static String screenRecording = "screenRecording";
+  static String videoPlayer = "videoPlayer";
+  static String audioService = "audioService";
 
   // settings routes
   static String notifications = "notifications";
