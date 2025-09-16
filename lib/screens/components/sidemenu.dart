@@ -1,8 +1,9 @@
 // ignore_for_file: use_build_context_synchronously
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:listen_iq/utilities/router_constants.dart';
+import 'package:path_provider/path_provider.dart';
 
 class SideMenu extends StatefulWidget {
   const SideMenu({super.key});
@@ -12,10 +13,41 @@ class SideMenu extends StatefulWidget {
 }
 
 class _SideMenuState extends State<SideMenu> {
+  int _totalFiles = 0;
+
   @override
   void initState() {
     super.initState();
+    _loadFileCount();
   }
+
+
+  Future<String> _getEncFilesDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final encDir = Directory("${dir.path}/enc_files");
+    if (!await encDir.exists()) {
+      await encDir.create(recursive: true);
+    }
+    return encDir.path;
+  }
+
+  Future<int> _encfilesCount() async {
+    final dirPath = await _getEncFilesDir();
+    final dir = Directory(dirPath);
+    final encFiles = dir
+        .listSync()
+        .where((e) => e is File && e.path.endsWith(".enc"))
+        .cast<File>()
+        .toList();
+    return encFiles.length;
+  }
+
+  Future<void> _loadFileCount() async {
+  final count = await _encfilesCount();
+  setState(() {
+    _totalFiles = count;
+  });
+}
 
   // Helper method to close drawer and navigate
   void _navigateAndClose(String routeName) {
@@ -69,6 +101,14 @@ class _SideMenuState extends State<SideMenu> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            "Number of Encrypted files: $_totalFiles",
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             "Choose a service",
@@ -88,22 +128,24 @@ class _SideMenuState extends State<SideMenu> {
       children: [
         _buildSectionHeader("Services"),
         const SizedBox(height: 12),
-        // _buildMenuItem(
-        //   icon: Icons.videocam,
-        //   label: 'Video',
-        //   color: const Color(0xFFEC4899),
-        //   onTap: () {
-        //     _closeDrawer();
-        //     // Navigate to video service when route is available
-        //     // _navigateAndClose(RouteConstants.videoService);
-        //   },
-        // ),
+        _buildMenuItem(
+          icon: Icons.videocam,
+          label: 'Video',
+          color: const Color(0xFFEC4899),
+          onTap: () {
+            _closeDrawer();
+            // Navigate to video service when route is available
+            // _navigateAndClose(RouteConstants.videoService);
+          },
+        ),
         _buildMenuItem(
           icon: Icons.screen_share,
           label: 'Screen Recording',
           color: const Color(0xFF8B5CF6),
           onTap: () {
-            _navigateAndClose(RouteConstants.screenRecording);
+            _closeDrawer();
+            // Navigate to screen recording service when route is available
+            // _navigateAndClose(RouteConstants.screenRecording);
           },
         ),
         _buildMenuItem(
@@ -111,7 +153,9 @@ class _SideMenuState extends State<SideMenu> {
           label: 'Audio',
           color: const Color(0xFFF59E0B),
           onTap: () {
-            _navigateAndClose(RouteConstants.audioService);
+            _closeDrawer();
+            // Navigate to audio service when route is available
+            // _navigateAndClose(RouteConstants.audioService);
           },
         ),
       ],
