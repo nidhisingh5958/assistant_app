@@ -1,3 +1,5 @@
+<h2>Worlkflow Documentation</h2>
+
 # Chat Module
 
 The **Chat Module** provides an AI-driven messaging interface. It defines data models, UI widgets, and screens to facilitate conversational interactions between the user and the health assistant.
