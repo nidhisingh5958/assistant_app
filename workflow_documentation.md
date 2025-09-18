@@ -1,4 +1,4 @@
-<h2>Worlkflow Documentation</h2>
+<h1>Worlkflow Documentation</h1>
 
 # Chat Module
 
